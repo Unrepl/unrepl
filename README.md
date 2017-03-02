@@ -96,7 +96,7 @@ which is not readable. Hence the necessity of `:id` or `:get` to provide unique 
 
 #### MIME Attachments
 
-Some values may print to `#unrepl/mime m` where m is a map with keys: `:content-type` (option a string, defaults to "application/binary"), `:content-length` (optional, number), `:type` (optional, type for the host (eg the class on the JVM), `:content` (optional base64-encoded) and `:get` (string).
+Some values may print to `#unrepl/mime m` where m is a map with keys: `:content-type` (optional, string, defaults to "application/binary"), `:content-length` (optional, number), `:filename` (optional, string), `:details` (optional, anything, a representation of the object (eg for a `java.io.File` instance it could be the path and the class)), `:content` (optional base64-encoded) and `:get` (string).
 
 ## License
 
