@@ -61,6 +61,29 @@ Example: machine printing `(range)`
 
 (The `:get` value being a string is due to the fact that the input stream is not constrained.)
 
+##### Rendering
+Clients may render a `#unrepl/... {}` literal as `...` and when `:get` is present offers the user the ability to expand this elision.
+
+##### Expansion
+To expand the elision the client send to the repl the value associated to the `:get` key. The repl answers (in the `:eval` channel)  with either:
+
+ * a collection that should be spliced in lieu of the `...`
+ * a `#unrepl/...` value with no `:get` key (for example when the elided values are not reachable anymore), including (but not limited to) `#unrepl/... nil`.
+
+So continuing the `(range)` example:
+
+```clj
+> (range)
+< (0 1 2 3 4 5 6 7 8 9 #ednrepl/... {:get "(tmp1234/get :G__8391)"})
+> (tmp1234/get :G__8391)"
+< (10 11 12 13 14 15 16 17 18 19 #ednrepl/... {:get "(tmp1234/get :G__8404)"})
+```
+
+##### Caveats
+###### Padding maps
+Elided maps representations must still have an even number of entries, so a second elision marker `#unrepl/... nil` is added to pad the representation. All data (if any) is supported by the elision in key position. When splicing the expansion both markers are replaced.
+
+###### Identity and value
 These maps may also have an `:id` key to keep elided values different when used in sets or as keys in maps. So either each elision get a unique id or the id may be value-based (that is: when two elisions ids are equal their elided values are equal). When `:get` is provided there's no need for `:id` (because by definition the `:get` value will be unique or at least value-based).
 
 Example: printing the set `#{[1] [2]}` with a very shallow print depth and a (broken) printer that doesn't assign `:id` nor `:get` returns:
@@ -70,15 +93,6 @@ Example: printing the set `#{[1] [2]}` with a very shallow print depth and a (br
 ```
 
 which is not readable. Hence the necessity of `:id` or `:get` to provide unique ids.
-
-Clients may render a `#unrepl/... {}` literal as `...` and when `:get` is present offers the user the ability to expand this elision.
-
-To expand the elision the client send to the repl the value associated to the `:get` key. The repl answers (in the `:eval` channel)  with either:
-
- * a collection that should be spliced in lieu of the `...`
- * a `#unrepl/...` value with no `:get` key (for example when the elided values are not reachable anymore), including (but not limited to) `#unrepl/... nil`.
-
-Elided maps representations must still have an even number of entries, so a second elision marker `#unrepl/... nil` is added to pad the representation. All data (if any) is supported by the elision in key position. When splicing the expansion both markers are replaced.
 
 ## License
 
