@@ -56,7 +56,7 @@ Printing should be bound in length and depth. When the printer decides to elidea
 Example: machine printing `(range)`
 
 ```clj
-(0 1 2 3 4 5 6 7 8 9 #ednrepl/... {:get "(tmp1234/get :G__8391)"})
+(0 1 2 3 4 5 6 7 8 9 #unrepl/... {:get "(tmp1234/get :G__8391)"})
 ```
 
 (The `:get` value being a string is due to the fact that the input stream is not constrained.)
@@ -74,9 +74,9 @@ So continuing the `(range)` example:
 
 ```clj
 > (range)
-< (0 1 2 3 4 5 6 7 8 9 #ednrepl/... {:get "(tmp1234/get :G__8391)"})
+< (0 1 2 3 4 5 6 7 8 9 #unrepl/... {:get "(tmp1234/get :G__8391)"})
 > (tmp1234/get :G__8391)"
-< (10 11 12 13 14 15 16 17 18 19 #ednrepl/... {:get "(tmp1234/get :G__8404)"})
+< (10 11 12 13 14 15 16 17 18 19 #unrepl/... {:get "(tmp1234/get :G__8404)"})
 ```
 
 ##### Caveats
@@ -89,7 +89,7 @@ These maps may also have an `:id` key to keep elided values different when used 
 Example: printing the set `#{[1] [2]}` with a very shallow print depth and a (broken) printer that doesn't assign `:id` nor `:get` returns:
 
 ```clj
-#{[#ednrepl/... nil] [#ednrepl/... nil]}
+#{[#unrepl/... nil] [#unrepl/... nil]}
 ```
 
 which is not readable. Hence the necessity of `:id` or `:get` to provide unique ids.
