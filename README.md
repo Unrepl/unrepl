@@ -34,15 +34,51 @@ To be more precise it's a stream of 2/3-item tuples:
 
 The purpose of the tag is to allow demultiplexing things that are usually intermingled in a repl display.
 
-Five tags are defined at the moment: `:prompt`, `:eval`, `:out`, `:err` and `:exception`.
+Five tags are defined at the moment: `:unrepl/hello`, `:bye`, `:prompt`, `:eval`, `:out`, `:err` and `:exception`.
 
 | Tag | Payload |
 |-----|---------|
-|:prompt|A map of qualified symbols (var names) to their values|
-|:eval|The evaluation result|
-|:out|A string|
-|:err|A string|
-|:exception|The exception|
+|`:unrepl/hello`|A map TBD|
+|`:bye`|`nil`|
+|`:prompt`|A map of qualified symbols (var names) to their values|
+|`:eval`|The evaluation result|
+|`:out`|A string|
+|`:err`|A string|
+|`:exception`|The exception|
+
+Messages not understood by a client should be ignored.
+
+#### `:unrepl/hello`
+
+The first message must be a `:unrepl/hello`. It's the only message whose tag is qualified. It's namespaced to make sniffing the protocol easier. (For example when connecting to a socket you may either get an existing unrepl repl or a standard repl that you are going to upgrade.)
+
+#### `:bye`
+
+The `:bye` message must be the last unrepl message before yielding control of the input and output streams (eg nesting another REPL... or [Eliza](https://en.wikipedia.org/wiki/ELIZA)).
+
+Implementation note: this can be detected when the expression being evaluated tries to read from the input. When evaluation returns, the unrepl impl can reassume control of the input and output stream. If it does so, its first message must be a `:unrepl/hello`.
+
+Example:
+
+```clj
+< [:prompt {:ns #object[clojure.lang.Namespace 0x2d352c62 "unrepl.core"], :*warn-on-reflection* nil}]
+> (loop [] (let [c (char (.read *in*))] (case c \# :ciao (do (println "RAW" c) (recur)))))
+< [:bye nil]
+> A
+< RAW A
+< RAW 
+<
+> ABC
+< RAW A
+< RAW B
+< RAW C
+< RAW 
+< 
+> # 
+< [:unrepl/hello {:commands {}}]
+< [:eval :ciao]
+< [:prompt {:ns #object[clojure.lang.Namespace 0x2d352c62 "unrepl.core"], :*warn-on-reflection* nil}]
+```
 
 ### Machine printing
 Pretty printing is meant for humans and should be performed on the client.
