@@ -2,6 +2,12 @@
 
 A REPL-centric approach to tooling.
 
+## Status
+
+This document is a work in progress. A companion implementation is available in the `unrepl.core` namespace.
+
+Use `(unrepl.core/start-repl)` to start an unrepl insde a regular repl. Type `exit` to exit back to the original repl.
+
 ## Background
 
 Imagine a protocol so flexible that you can upgrade it to anything you want.
