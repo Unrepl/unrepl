@@ -34,7 +34,7 @@ To be more precise it's a stream of 2/3-item tuples:
 
 The purpose of the tag is to allow demultiplexing things that are usually intermingled in a repl display.
 
-Five tags are defined at the moment: `:unrepl/hello`, `:bye`, `:prompt`, `:eval`, `:out`, `:err` and `:exception`.
+Seven tags are defined at the moment: `:unrepl/hello`, `:bye`, `:prompt`, `:eval`, `:out`, `:err` and `:exception`.
 
 | Tag | Payload |
 |-----|---------|
