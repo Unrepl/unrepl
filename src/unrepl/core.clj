@@ -2,20 +2,25 @@
   (:require [clojure.main :as m]
     [unrepl.print :as p]))
 
-(defn tagging-writer [tag write]
-  (proxy [java.io.Writer] []
-    (close []) ; do not cascade
-    (flush []) ; atomic always flush
-    (write
-      ([x]
-        (write [tag (cond 
-                      (string? x) x
-                      (integer? x) (str (char x))
-                      :else (String. ^chars x))]))
-      ([string-or-chars off len]
-        (when (pos? len)
-          (write [tag (subs (if (string? string-or-chars) string-or-chars (String. ^chars string-or-chars))
-                        off (+ off len))]))))))
+(defn tagging-writer
+  ([write]
+    (proxy [java.io.Writer] []
+      (close []) ; do not cascade
+      (flush []) ; atomic always flush
+      (write
+        ([x]
+          (write (cond 
+                   (string? x) x
+                   (integer? x) (str (char x))
+                   :else (String. ^chars x))))
+        ([string-or-chars off len]
+          (when (pos? len)
+            (write (subs (if (string? string-or-chars) string-or-chars (String. ^chars string-or-chars))
+                     off (+ off len))))))))
+  ([tag write]
+    (tagging-writer (fn [s] (write [tag s]))))
+  ([tag group-id write]
+    (tagging-writer (fn [s] (write [tag s group-id])))))
 
 (defn atomic-write [^java.io.Writer w]
   (fn [x]
@@ -37,8 +42,9 @@
     (with-local-vars [reading false] 
      (let [raw-out *out*
            write (atomic-write raw-out)
-           edn-out (java.io.BufferedWriter. (tagging-writer :out write) 512)
+           edn-out (tagging-writer :out write)
            unrepl (atom false)
+           eval-id (atom 0)
            ensure-unrepl (fn []
                            (when-not @unrepl
                              (reset! unrepl true)
@@ -59,13 +65,18 @@
                      (ensure-unrepl)
                      (write [:prompt {:ns *ns* :*warn-on-reflection* *warn-on-reflection*}])) ; not to spec
            :read (fn [request-prompt request-exit]
+                   (ensure-unrepl)
                    (with-bindings {reading true}
                      (let [r (m/repl-read request-prompt request-exit)]
                        ({safeword request-exit} r r))))
-           :eval eval
+           :eval (fn [form]
+                   (let [id (swap! eval-id inc)]
+                     (binding [*err* (tagging-writer :err id write)
+                               *out* (tagging-writer :out id write)]
+                      (eval form))))
            :print (fn [x]
                     (ensure-unrepl)
-                    (write [:eval x]))
+                    (write [:eval x @eval-id]))
            :caught (fn [e]
                      (ensure-unrepl)
-                     (write [:exception e]))))))))
+                     (write [:exception e @eval-id]))))))))
