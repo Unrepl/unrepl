@@ -68,7 +68,7 @@
   (cond
     (ratio? x) (tagged-literal 'unrepl/ratio [(.numerator x) (.denominator x)])
     (instance? Throwable x) (tagged-literal 'error (Throwable->map x))
-    (class? x) (tagged-literal 'unrepl/class (if (.isArray x) [(-> x .getComponentType ednize :form)] (symbol (.getName x))))
+    (class? x) (tagged-literal 'unrepl.java/class (if (.isArray x) [(-> x .getComponentType ednize :form)] (symbol (.getName x))))
     (instance? clojure.lang.IDeref x)
     (let [pending? (and (instance? clojure.lang.IPending x) ; borrowed from https://github.com/brandonbloom/fipp/blob/8df75707e355c1a8eae5511b7d73c1b782f57293/src/fipp/ednize.clj#L37-L51
                      (not (.isRealized ^clojure.lang.IPending x)))
@@ -96,7 +96,7 @@
         p (fn p [x]
             (cond
               (tagged-literal? x) ((*tagged-literal-printers* (:tag x) default-tagged-literal-printer) w x p)
-              (and *print-meta* (meta x)) (recur (tagged-literal 'unrepl/meta [(meta x) (with-meta x nil)]))
+              (and *print-meta* (meta x)) (recur (tagged-literal 'unrepl/meta [(meta x) (with-meta x nil)])) ; TODO with-meta may throw
               (map? x) (doto w (write "{") (print-kvs x rem-depth) (write "}"))
               (vector? x) (doto w (write "[") (print-vs x rem-depth) (write "]"))
               (seq? x) (doto w (write "(") (print-vs x rem-depth) (write ")"))
