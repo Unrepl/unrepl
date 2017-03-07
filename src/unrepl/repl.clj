@@ -1,4 +1,4 @@
-(ns unrepl.core
+(ns unrepl.repl
   (:require [clojure.main :as m]
     [unrepl.print :as p]))
 
@@ -68,8 +68,8 @@
             (or (some-> @ids-to-weakrefs ^java.lang.ref.WeakReference (get id) .get)
               (tagged-literal 'unrepl/... nil)))}))
 
-(defn start-repl
-  []
+(defn start []
+  ; TODO: tighten by removing the dep on m/repl
   (with-local-vars [in-eval false
                     command-mode false
                     unrepl false

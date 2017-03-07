@@ -4,9 +4,9 @@ A REPL-centric approach to tooling.
 
 ## Status
 
-This document is a work in progress. A companion implementation is available in the `unrepl.core` namespace.
+This document is a work in progress. A companion implementation is available in the `unrepl.repl` namespace.
 
-Use `(unrepl.core/start-repl)` to start an unrepl insde a regular repl. Type `exit` to exit back to the original repl.
+Use `(unrepl.repl/start)` to start an unrepl insde a regular repl. Type `exit` to exit back to the original repl.
 
 ## Background
 

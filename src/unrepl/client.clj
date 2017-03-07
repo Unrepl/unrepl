@@ -1,5 +1,5 @@
-(ns unrepl.msg
-  "This namespace is meant for clients: it composes messages according to the description sent by the server and the avilable data."
+(ns unrepl.client
+  "This namespace is meant for clients: it composes messages according to the description sent by the repl and the available data."
   (require [unrepl.print :as p]))
 
 (defn- param? [x]
