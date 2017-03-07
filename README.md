@@ -96,6 +96,18 @@ Pretty printing is meant for humans and should be performed on the client.
 
 Clojure values are machine-printed to EDN.
 
+#### Filling the gap
+
+Ratios (e.g. `4/3`) are printed as `#unrepl/ratio [4 3]`
+
+Classes are printed as `#unrepl.java/class ClassName` or `#unrepl.java/class [ClassName]` for arrays (with no bounds on the nesting).
+
+Namespaces are printed as `#unrepl/ns name.sp.ace`.
+
+Metadata is preinted as `#unrepl/meta [{meta data} value]`.
+
+Objects are printed as `#unrepl/object [class "id" representation]`. The representation is implementation dependent. One may use an elided map representation to allow browsing the object graph.
+
 #### Ellipsis or elisions
 
 Printing should be bound in length and depth. When the printer decides to elidea sequence of values it should emit a tagge literal `#unrepl/... m` where `m` is either `nil` or a map. This map may contain a `:get` key associated to a template message. All simple (non qualified) keywords (and those with `unrepl` namespace) are reserved for future revisions of these specification.
@@ -142,6 +154,10 @@ which is not readable. Hence the necessity of `:id` or `:get` to provide unique 
 #### MIME Attachments
 
 Some values may print to `#unrepl/mime m` where m is a map with keys: `:content-type` (optional, string, defaults to "application/binary"), `:content-length` (optional, number), `:filename` (optional, string), `:details` (optional, anything, a representation of the object (eg for a `java.io.File` instance it could be the path and the class)), `:content` (optional base64-encoded) and `:get` (string).
+
+### Message Templates
+
+TBD
 
 ## License
 
