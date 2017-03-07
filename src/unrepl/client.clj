@@ -5,6 +5,9 @@
 (defn- param? [x]
   (and (tagged-literal? x) (= 'unrepl/param (:tag x))))
 
+(defn- encoding? [x]
+  (and (tagged-literal? x) (contains? *encoding-printers* (:tag x))))
+
 (def ^:dynamic *encoding-printers* {'unrepl/raw (fn [lookup]
                                                   (letfn [(raw-printer [w form p]
                                                             (cond
@@ -21,9 +24,6 @@
                                                       [p/*tagged-literal-printers*
                                                        (assoc p/*tagged-literal-printers* 'unrepl/param (fn [w x p] (p (lookup form))))]
                                                       (p form))))})
-
-(defn- encoding? [x]
-  (and (tagged-literal? x) (contains? *encoding-printers* (:tag x))))
 
 (defn msg-str
   "Compose a message, the message description ias assumed to have been read
