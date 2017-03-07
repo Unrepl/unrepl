@@ -127,8 +127,8 @@
                    (with-bindings bindings
                      (deliver p
                        (try
-                         {:value (with-bindings {in-eval true} (eval form))
-                          :bindings (get-thread-bindings)} 
+                         (let [v (with-bindings {in-eval true} (eval form))]
+                           {:value v :bindings (get-thread-bindings)})
                          (catch Throwable e
                            {:caught e :bindings (get-thread-bindings)}))))))
                (loop []
@@ -140,9 +140,8 @@
                        :else (.unread *in* c)))))
                (let [{:keys [bindings caught value interrupted]} @p]
                  (reset! current-eval-thread+promise nil)
-                 (when bindings
-                   (pop-thread-bindings)
-                   (push-thread-bindings bindings))
+                 (doseq [[v val] bindings]
+                   (var-set v val))
                  (cond
                    interrupted (throw interruption)
                    caught (throw caught)
@@ -179,10 +178,10 @@
                   (let [id (var-set eval-id (inc @eval-id))]
                     (binding [*err* (tagging-writer :err id write)
                               *out* (tagging-writer :out id write)]
-                     (if @command-mode
-                       (let [command (get commands (first form))]
-                         (throw (ex-info "Command" {::command (apply command (rest form))})))
-                       (interruptible-eval form)))))
+                      (if @command-mode
+                        (let [command (get commands (first form))]
+                          (throw (ex-info "Command" {::command (apply command (rest form))})))
+                        (interruptible-eval form)))))
           :print (fn [x]
                    (ensure-unrepl)
                    (write [:eval x @eval-id]))
