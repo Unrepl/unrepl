@@ -28,7 +28,7 @@ All simple (not qualified) keywords and all keywords in the `unrepl` namespaces 
 
 ### Streams format
 
-The input is expected to be free form (a character stream).
+The input is expected to be free form (a character stream). The default behavior to be expected is evaluation. (It's a rEpl after all.)
 
 The output is a stream of EDN datastructures.
 
@@ -36,18 +36,19 @@ To be more precise it's a stream of 2/3-item tuples:
 
 1. the first component is a tag (keyword)
 2. the second id the payload
-3. (optional) a group id
+3. (optional) a group id (meant to group together messages)
 
 The purpose of the tag is to allow demultiplexing things that are usually intermingled in a repl display.
 
-Seven tags are defined at the moment: `:unrepl/hello`, `:bye`, `:prompt`, `:eval`, `:out`, `:err` and `:exception`.
+Eight core tags are defined: `:unrepl/hello`, `:bye`, `:prompt`, `:eval`, `:command`, `:out`, `:err` and `:exception`. More tags are defined in standard commands.
 
 | Tag | Payload |
 |-----|---------|
-|`:unrepl/hello`|A map TBD|
+|`:unrepl/hello`|A map|
 |`:bye`|`nil`|
 |`:prompt`|A map of qualified symbols (var names) to their values|
 |`:eval`|The evaluation result|
+|`:command`|The command result|
 |`:out`|A string|
 |`:err`|A string|
 |`:exception`|The exception|
@@ -57,6 +58,10 @@ Messages not understood by a client should be ignored.
 #### `:unrepl/hello`
 
 The first message must be a `:unrepl/hello`. It's the only message whose tag is qualified. It's namespaced to make sniffing the protocol easier. (For example when connecting to a socket you may either get an existing unrepl repl or a standard repl that you are going to upgrade.)
+
+Its payload is a map which may have a `:commands` key mapping to a map of command ids (keywords) to template messages.
+
+This is how an unrepl implementtaion advertises its capabilities: by listing them along a machine-readable specification of the message to send to trigger them.
 
 #### `:bye`
 
@@ -93,15 +98,13 @@ Clojure values are machine-printed to EDN.
 
 #### Ellipsis or elisions
 
-Printing should be bound in length and depth. When the printer decides to elidea sequence of values it should emit a tagge literal `#unrepl/... m` where `m` is either `nil` or a map. This map may contain a `:get` key associated to a string. All simple (non qualified) keywords (and those with `unrepl` namespace) are reserved for future revisions of these specification.
+Printing should be bound in length and depth. When the printer decides to elidea sequence of values it should emit a tagge literal `#unrepl/... m` where `m` is either `nil` or a map. This map may contain a `:get` key associated to a template message. All simple (non qualified) keywords (and those with `unrepl` namespace) are reserved for future revisions of these specification.
 
 Example: machine printing `(range)`
 
 ```clj
-(0 1 2 3 4 5 6 7 8 9 #unrepl/... {:get "(tmp1234/get :G__8391)"})
+(0 1 2 3 4 5 6 7 8 9 #unrepl/... {:get #unrepl/raw "(tmp1234/get :G__8391)"})
 ```
-
-(The `:get` value being a string is due to the fact that the input stream is not constrained.)
 
 ##### Rendering
 Clients may render a `#unrepl/... {}` literal as `...` and when `:get` is present offers the user the ability to expand this elision.
@@ -116,9 +119,9 @@ So continuing the `(range)` example:
 
 ```clj
 > (range)
-< (0 1 2 3 4 5 6 7 8 9 #unrepl/... {:get "(tmp1234/get :G__8391)"})
+< (0 1 2 3 4 5 6 7 8 9 #unrepl/... {:get #unrepl/raw "(tmp1234/get :G__8391)"})
 > (tmp1234/get :G__8391)"
-< (10 11 12 13 14 15 16 17 18 19 #unrepl/... {:get "(tmp1234/get :G__8404)"})
+< (10 11 12 13 14 15 16 17 18 19 #unrepl/... {:get #unrepl/raw "(tmp1234/get :G__8404)"})
 ```
 
 ##### Caveats
