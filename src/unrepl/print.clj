@@ -45,9 +45,9 @@
                   (into {:path (.getPath f)}
                     (when (and *attach* (.isFile f))
                       {:attachment (tagged-literal 'unrepl/mime
-                                     {:content-type "application/octet-stream"
-                                      :content-length (.length f)
-                                      :get (*attach* #(java.io.FileInputStream. f))})})))
+                                     (into {:content-type "application/octet-stream"
+                                           :content-length (.length f)}
+                                       (*attach* #(java.io.FileInputStream. f))))})))
    
    java.awt.Image (fn [^java.awt.Image img]
                     (let [w (.getWidth img nil)
@@ -56,13 +56,13 @@
                        (when *attach*
                          {:attachment
                           (tagged-literal 'unrepl/mime
-                            {:content-type "image/png"
-                             :get (*attach* #(let [bos (java.io.ByteArrayOutputStream.)]
+                            (into {:content-type "image/png"}
+                              (*attach* #(let [bos (java.io.ByteArrayOutputStream.)]
                                                (when (javax.imageio.ImageIO/write
                                                        (doto (java.awt.image.BufferedImage. w h java.awt.image.BufferedImage/TYPE_INT_ARGB)
                                                          (-> .getGraphics (.drawImage img 0 0 nil)))
                                                        "png" bos)
-                                                 (java.io.ByteArrayInputStream. (.toByteArray bos)))))})}))))
+                                                 (java.io.ByteArrayInputStream. (.toByteArray bos)))))))}))))
    
    Object (fn [x]
             (if (-> x class .isArray)
