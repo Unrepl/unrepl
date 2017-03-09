@@ -2,11 +2,23 @@
 
 A REPL-centric approach to tooling.
 
+unrepl is a general purpose stream-based REPL protocol.
+
+An unrepl repl is just a REPL with a fancy printer.
+
 ## Status
 
 This document is a work in progress. A companion implementation is available in the `unrepl.repl` namespace.
 
 Use `(unrepl.repl/start)` to start an unrepl insde a regular repl. Type `exit` to exit back to the original repl.
+
+The output (edn messages) & input specification (message templates) is mostly done. What is left to specify is:
+
+ * some standard (but optional) commands
+
+ * some parameters.
+
+You can ask questions on the `#unrepl` channel on the Clojurians Slack.
 
 ## Background
 
@@ -153,11 +165,53 @@ which is not readable. Hence the necessity of `:id` or `:get` to provide unique 
 
 #### MIME Attachments
 
-Some values may print to `#unrepl/mime m` where m is a map with keys: `:content-type` (optional, string, defaults to "application/binary"), `:content-length` (optional, number), `:filename` (optional, string), `:details` (optional, anything, a representation of the object (eg for a `java.io.File` instance it could be the path and the class)), `:content` (optional base64-encoded) and `:get` (string).
+Some values may print to `#unrepl/mime m` where m is a map with keys: `:content-type` (optional, string, defaults to "application/octet-stream"), `:content-length` (optional, number), `:filename` (optional, string), `:details` (optional, anything, a representation of the object (eg for a `java.io.File` instance it could be the path and the class)), `:content` (optional base64-encoded) and `:get` (message template).
 
 ### Message Templates
 
-TBD
+A message template is an executable description of the expected message.
+
+They always start by a tagged-literal named an encoding. This document specifies two encodings: `unrepl/raw` and `unrepl/edn`.
+
+Qualified keywords tagged by `unrepl/param` are to be substituted by their value.
+
+#### `unrepl/edn` encoding
+
+The form is left intact except for `#unrepl/param :some/param` that are replaced by their value. The resulting form is serialized as edn.
+
+#### `unrepl/raw` encoding
+
+When the form is a character or a string, it is send as is.
+When the form is a vector, its components are recursively visited -- thus it denotes concatenation.
+When the form is an encoding, it's serialized according to this encoding.
+
+#### Examples
+
+A very simple one:
+
+```clj
+#unrepl/raw \0003 ; no param always write ^C
+```
+
+A composite one:
+
+```clj
+#unrepl/raw [\u0010 #unrepl/edn (set-file-line-col #unrepl/param :unrepl/sourcename #unrepl/param :unrepl/line #unrepl/param :unrepl/col)]
+```
+
+There's a helper client namespace (`unrepl.client`) to compose messages from a message template and a map of parameters:
+
+```clj
+=> (unrepl.client/msg-str 
+     (clojure.edn/read-string {:default tagged-literal}
+     "#unrepl/raw [\\u0010 #unrepl/edn (set-file-line-col #unrepl/param :unrepl/sourcename #unrepl/param :unrepl/line #unrepl/param :unrepl/col)]")
+     {:unrepl/sourcename "demo.clj"
+      :unrepl/line 12
+      :unrepl/col 36})
+
+"\u0010(set-file-line-col \"demo.clj\" 12 36)"
+```
+
 
 ## License
 
