@@ -27,6 +27,7 @@
     (let [s (p/edn-str x)] ; was pr-str, must occur outside of the locking form to avoid deadlocks
       (locking w
         (.write w s)
+        (.write w "\n")
         (.flush w)))))
 
 (defn pre-reader [^java.io.Reader r before-read]
