@@ -5,25 +5,33 @@
 (defn- param? [x]
   (and (tagged-literal? x) (= 'unrepl/param (:tag x))))
 
-(defn- encoding? [x]
-  (and (tagged-literal? x) (contains? *encoding-printers* (:tag x))))
+(declare encoding)
 
-(def ^:dynamic *encoding-printers* {'unrepl/raw (fn [lookup]
-                                                  (letfn [(raw-printer [w form p]
-                                                            (cond
-                                                              (vector? form) (reduce #(doto %1 (raw-printer %2 p)) w form)
-                                                              (char? form) (p/write w (str form))
-                                                              (string? form) (p/write w form)
-                                                              (param? form) (p/write w (str (lookup form)))
-                                                              (encoding? form) (p form)))]
-                                                    (fn [w {:keys [form]} p]
-                                                      (raw-printer w form p))))
-                                    'unrepl/edn (fn [lookup]
-                                                  (fn [w {:keys [form]} p] 
-                                                    (binding 
-                                                      [p/*tagged-literal-printers*
-                                                       (assoc p/*tagged-literal-printers* 'unrepl/param (fn [w x p] (p (lookup form))))]
-                                                      (p form))))})
+(def ^:dynamic *encoding* {'unrepl/raw (fn [lookup {:keys [form]}]
+                                         (letfn [(raw-printer [form]
+                                                   (cond
+                                                     (vector? form) (doseq [x form] (raw-printer x))
+                                                     (char? form) (print form)
+                                                     (string? form) (print form)
+                                                     (param? form) (print (lookup form))
+                                                     (encoding form) (let [f (encoding form)]
+                                                                       (print (f lookup form)))
+                                                     :else (throw (ex-info "Unsupported raw template." {:form form}))))]
+                                           (with-out-str
+                                             (raw-printer form))))
+                           'unrepl/edn (fn [lookup {:keys [form]}]
+                                         (binding 
+                                           [p/*ednize-fns*
+                                            (update p/*ednize-fns* clojure.lang.TaggedLiteral
+                                              (fnil (fn [f]
+                                                      (fn [lit]
+                                                        (if (param? lit)
+                                                          (p/ednize (lookup lit))
+                                                          (f lit)))) identity))]
+                                           (p/full-edn-str form)))})
+
+(defn- encoding [x]
+  (and (tagged-literal? x) (*encoding* (:tag x))))
 
 (defn msg-str
   "Compose a message, the message description ias assumed to have been read
@@ -40,10 +48,6 @@
                      (if-some [[_ v] (find params k)]
                        v
                        (throw (ex-info (str "Can't resolve param " param) {:msg msg :aliases aliases :param param})))))]
-      (binding [*print-length* Long/MAX_VALUE
-                *print-level* Long/MAX_VALUE
-                p/*tagged-literal-printers*
-                (into p/*tagged-literal-printers* (map (fn [[sym f]] [sym (f lookup)])) *encoding-printers*)]
-        (when-not (encoding? msg)
-          (throw (ex-info "Can't serialize message, unknown or missing encoding tag." {:msg msg})))
-        (p/edn-str msg)))))
+      (if-some [f (encoding msg)]
+        (f lookup msg)
+        (throw (ex-info "Can't serialize message, unknown or missing encoding tag." {:msg msg}))))))

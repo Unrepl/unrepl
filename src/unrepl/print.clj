@@ -75,7 +75,9 @@
 
 (def ^:dynamic *ednize-fns*
   "map of classes to function converting to a shallow edn-safe representation"
-  {clojure.lang.Ratio (fn [^clojure.lang.Ratio x] (tagged-literal 'unrepl/ratio [(.numerator x) (.denominator x)]))
+  {clojure.lang.TaggedLiteral identity
+   
+   clojure.lang.Ratio (fn [^clojure.lang.Ratio x] (tagged-literal 'unrepl/ratio [(.numerator x) (.denominator x)]))
    
    Throwable #(tagged-literal 'error (Throwable->map %))
    
@@ -108,7 +110,6 @@
   ([x print-length] (ednize x print-length *print-meta*))
   ([x print-length print-meta]
   (cond
-    (tagged-literal? x) x
     (atomic? x) x
     (and print-meta (meta x)) (tagged-literal 'unrepl/meta [(meta x) (ednize x print-length false)])
     (map? x) (into (empty x) (elide-kvs x print-length))
@@ -116,8 +117,11 @@
     (vector? x) (into (empty x) (elide-vs x print-length))
     (seq? x) (elide-vs x print-length)
     (set? x) (into (empty x) (elide-vs x print-length))
-    :else (recur (reduce-kv (fn [_ class f]
-                              (when (instance? class x) (reduced (f x)))) nil *ednize-fns*) print-length print-meta)))) ; todo : cache
+    :else (let [x' (reduce-kv (fn [_ class f]
+                                (when (instance? class x) (reduced (f x)))) nil *ednize-fns*)]
+            (if (= x x')
+              x
+              (recur x'  print-length print-meta)))))) ; todo : cache
 
 (declare print-on)
 
