@@ -112,6 +112,7 @@
     (atomic? x) x
     (and print-meta (meta x)) (tagged-literal 'unrepl/meta [(meta x) (ednize x print-length false)])
     (map? x) (into (empty x) (elide-kvs x print-length))
+    (instance? clojure.lang.MapEntry x) x
     (vector? x) (into (empty x) (elide-vs x print-length))
     (seq? x) (elide-vs x print-length)
     (set? x) (into (empty x) (elide-vs x print-length))
