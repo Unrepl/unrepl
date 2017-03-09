@@ -47,7 +47,7 @@
                                       (.setLineNumber *in* line)
                                       (some-> field (.set *in* col))))})
 
-(defn weak-elision-store [sym]
+(defn weak-store [sym not-found]
   (let [ids-to-weakrefs (atom {})
         weakrefs-to-ids (atom {})
         refq (java.lang.ref.ReferenceQueue.)]
@@ -63,10 +63,34 @@
                   wref (java.lang.ref.WeakReference. xs refq)]
               (swap! weakrefs-to-ids assoc wref id)
               (swap! ids-to-weakrefs assoc id wref)
-              {:get (tagged-literal 'unrepl/raw (str "\u0010" (p/edn-str (list sym id))))}))
+              {:get (tagged-literal 'unrepl/raw (str "\u0010" (p/full-edn-str (list sym id))))}))
      :get (fn [id]
             (or (some-> @ids-to-weakrefs ^java.lang.ref.WeakReference (get id) .get)
-              (tagged-literal 'unrepl/... nil)))}))
+              not-found))}))
+
+(defn- base64-str [^java.io.InputStream in]
+  (let [table "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        sb (StringBuilder.)]
+    (loop [shift 4 buf 0]
+      (let [got (.read in)]
+        (if (neg? got)
+          (do
+            (when-not (= shift 4)
+              (let [n (bit-and (bit-shift-right buf 6) 63)]
+                (.append sb (.charAt table n))))
+            (cond
+              (= shift 2) (.append sb "==")
+              (= shift 0) (.append sb \=))
+            (str sb))
+          (let [buf (bit-or buf (bit-shift-left got shift))
+                n (bit-and (bit-shift-right buf 6) 63)]
+            (.append sb (.charAt table n))
+            (let [shift (- shift 2)]
+              (if (neg? shift)
+                (do
+                  (.append sb (.charAt table (bit-and buf 63)))
+                  (recur 4 0))
+                (recur shift (bit-shift-left buf 6))))))))))
 
 (defn start []
   ; TODO: tighten by removing the dep on m/repl
@@ -76,8 +100,16 @@
                     eval-id 0
                     prompt-vars #{#'*ns* #'*warn-on-reflection*}] 
     (let [current-eval-thread+promise (atom nil)
-          elision-store (weak-elision-store '...)
-          commands (assoc commands '... (:get elision-store))
+          elision-store (weak-store '... (tagged-literal 'unrepl/... nil))
+          attachment-store (weak-store 'file (constantly nil))
+          commands (assoc commands
+                     '... (:get elision-store)
+                     'file (comp (fn [inf]
+                                   (if-some [in (inf)]
+                                     (with-open [^java.io.InputStream in in]
+                                       (base64-str in))
+                                     (tagged-literal 'unrepl/... nil)))
+                             (:get attachment-store)))
           CTRL-C \u0003
           CTRL-D \u0004
           CTRL-P \u0010
@@ -151,7 +183,8 @@
                 *in* (-> *in* (pre-reader ensure-raw-repl) clojure.lang.LineNumberingPushbackReader.)
                 *file* "unrepl-session"
                 *source-path* "unrepl-session"
-                p/*elide* (:put elision-store)]
+                p/*elide* (:put elision-store)
+                p/*attach* (:put attachment-store)]
         (m/repl
           :prompt (fn []
                     (ensure-unrepl)
