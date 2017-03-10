@@ -23,6 +23,13 @@
 
 (def ^:dynamic *attach* nil)
 
+(defmacro ^:private latent-fn [& fn-body]
+  `(let [d# (delay (binding [*ns* (find-ns '~(ns-name *ns*))] (eval '(fn ~@fn-body))))]
+     (fn
+       ([] (@d#))
+       ([x#] (@d# x#))
+       ([x# & xs#] (apply @d# x# xs#)))))
+
 (def ^:dynamic *object-representations*
   "map of classes to functions returning their representation component (3rd item in #unrepl/object [class id rep])"
   {clojure.lang.IDeref
@@ -49,7 +56,7 @@
                                            :content-length (.length f)}
                                        (*attach* #(java.io.FileInputStream. f))))})))
    
-   java.awt.Image (fn [^java.awt.Image img]
+   java.awt.Image (latent-fn [^java.awt.Image img]
                     (let [w (.getWidth img nil)
                           h (.getHeight img nil)]
                       (into {:width w, :height h}
@@ -69,7 +76,7 @@
               (seq x)
               (str x)))})
 
-(defn- object-representation [x]
+(defn- object-representation [x]  
   (reduce-kv (fn [_ class f]
                (when (instance? class x) (reduced (f x)))) nil *object-representations*)) ; todo : cache
 
