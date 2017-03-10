@@ -10,7 +10,7 @@ An unrepl repl is just a REPL with a fancy printer.
 
 This document is a work in progress. A companion implementation is available in the `unrepl.repl` namespace.
 
-Use `(unrepl.repl/start)` to start an unrepl insde a regular repl. Type `^D` (`^V^D` actually in a term to prevent the term for interpreting `^D`, if you know how to enter control chars with `rlwrap` let me know!) to exit back to the original repl.
+`lein run -m unrepl.repl/start` at the commande line or `(unrepl.repl/start)` to start an unrepl inside a regular repl. Type `^D` (`^V^D` actually in a term to prevent the term for interpreting `^D`, if you know how to enter control chars with `rlwrap` let me know!) to exit back to the original repl.
 
 The output (edn messages) & input specification (message templates) is mostly done. What is left to specify is:
 
