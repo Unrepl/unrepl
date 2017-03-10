@@ -118,9 +118,9 @@
           write (atomic-write raw-out)
           edn-out (tagging-writer :out write)
           ensure-unrepl (fn []
+                          (var-set command-mode false)
                           (when-not @unrepl
                             (var-set unrepl true)
-                            (var-set command-mode false)
                             (flush)
                             (set! *out* edn-out)
                             (binding [*print-length* Long/MAX_VALUE
@@ -189,7 +189,7 @@
         (m/repl
           :prompt (fn []
                     (ensure-unrepl)
-                    (write [:prompt (into {}
+                    (write [:prompt (into {:cmd @command-mode}
                                       (map (fn [v]
                                              (let [m (meta v)]
                                                [(symbol (name (ns-name (:ns m))) (name (:name m))) @v])))
