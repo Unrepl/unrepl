@@ -99,7 +99,8 @@
                     command-mode false
                     unrepl false
                     eval-id 0
-                    prompt-vars #{#'*ns* #'*warn-on-reflection*}] 
+                    prompt-vars #{#'*ns* #'*warn-on-reflection*}
+                    current-eval-future nil]
     (let [current-eval-thread+promise (atom nil)
           elision-store (weak-store '... (tagged-literal 'unrepl/... nil))
           attachment-store (weak-store 'file (constantly nil))
@@ -114,6 +115,7 @@
           CTRL-C \u0003
           CTRL-D \u0004
           CTRL-P \u0010
+          CTRL-Z \u001A
           raw-out *out*
           write (atomic-write raw-out)
           edn-out (tagging-writer :out write)
@@ -127,6 +129,7 @@
                                       *print-level* Long/MAX_VALUE]
                               (write [:unrepl/hello {:commands {:interrupt (tagged-literal 'unrepl/raw CTRL-C)
                                                                 :exit (tagged-literal 'unrepl/raw CTRL-D)
+                                                                :bg (tagged-literal 'unrepl/raw CTRL-Z)
                                                                 :set-source
                                                                 (tagged-literal 'unrepl/raw
                                                                   [CTRL-P
@@ -141,7 +144,7 @@
                               (write [:bye nil])
                               (flush)
                               (set! *out* raw-out)))
-          eval-executor (java.util.concurrent.Executors/newSingleThreadExecutor)
+          eval-executor (java.util.concurrent.Executors/newCachedThreadPool)
           interruption (ex-info "Interrupted" {})
           interrupt! (fn []
                        (when-some [[^Thread t p] @current-eval-thread+promise]
@@ -150,29 +153,37 @@
                          (when (:interrupted @p)
                            (.stop t)
                            #_(.join t)))) ; seems to block forever, to investigate
+          background! (fn []
+                        (when-some [[^Thread t p] @current-eval-thread+promise]
+                          (deliver p {:value @current-eval-future :bindings {}})))
           interruptible-eval
           (fn [form]
             (let [bindings (get-thread-bindings)
                   p (promise)]
-               (.execute eval-executor
-                 (fn []
-                   (reset! current-eval-thread+promise [(Thread/currentThread) p])
-                   (with-bindings bindings
-                     (deliver p
+               (var-set current-eval-future
+                 (.submit eval-executor
+                   ^Callable
+                   (fn []
+                     (reset! current-eval-thread+promise [(Thread/currentThread) p])
+                     (with-bindings bindings
                        (try
                          (let [v (with-bindings {in-eval true} (eval form))]
-                           {:value v :bindings (get-thread-bindings)})
-                         (catch Throwable e
-                           {:caught e :bindings (get-thread-bindings)}))))))
+                           (deliver p {:value v :bindings (get-thread-bindings)})
+                           v)
+                         (catch Throwable t
+                           (deliver p {:caught t :bindings (get-thread-bindings)})
+                           (throw t)))))))
                (loop []
                  (or (deref p 40 nil)
                    (let [c (.read *in*)]
                      (cond
                        (or (Character/isWhitespace c) (= \, c)) (recur)
                        (= (int CTRL-C) c) (interrupt!)
+                       (= (int CTRL-Z) c) (background!)
                        :else (.unread *in* c)))))
                (let [{:keys [bindings caught value interrupted]} @p]
                  (reset! current-eval-thread+promise nil)
+                 (var-set current-eval-future nil)
                  (doseq [[v val] bindings]
                    (var-set v val))
                  (cond
