@@ -220,6 +220,31 @@ There's a helper client namespace (`unrepl.client`) to compose messages from a m
 "\u0010(set-file-line-col \"demo.clj\" 12 36)"
 ```
 
+### Commands
+
+All commands are optional.
+
+The `:interrupt` and `:background-current-eval` commands are kind of special because they require reading while evaluation is going on. To preserve the single-thread model of a REPL care should be taken to not use the reader to recognize these commands have been issued. 
+
+#### `:exit`
+
+No parameter. Exit the repl, close the connection.
+
+#### `:interrupt`
+
+No parameter. Aborts the current running evaluation. Upon success a `[:interrupted nil id]` message is written (where `id` is the group id (if any) of the current evaluation).
+
+#### `:background-current-eval`
+
+No parameter. Transforms the current running evaluation in a Future. Upon success a `[:eval future id]` message is written (where `id` is the group id (if any) of the current evaluation).
+
+Upon completion of the future no message is sent.
+
+#### `:set-source`
+
+Three parameters: `:unrepl/filename` (string), `:unrepl/line` (integer) and `:unrepl/command` (integer).
+
+Sets the filename, line and column numbers for subsequent evaluations. The reader will update the line and column numbers as it reads more input. 
 
 ## License
 

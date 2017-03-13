@@ -129,7 +129,8 @@
                                       *print-level* Long/MAX_VALUE]
                               (write [:unrepl/hello {:commands {:interrupt (tagged-literal 'unrepl/raw CTRL-C)
                                                                 :exit (tagged-literal 'unrepl/raw CTRL-D)
-                                                                :bg (tagged-literal 'unrepl/raw CTRL-Z)
+                                                                :background-current-eval
+                                                                (tagged-literal 'unrepl/raw CTRL-Z)
                                                                 :set-source
                                                                 (tagged-literal 'unrepl/raw
                                                                   [CTRL-P
@@ -137,7 +138,7 @@
                                                                      (list 'set-file-line-col
                                                                        (tagged-literal 'unrepl/param :unrepl/sourcename)
                                                                        (tagged-literal 'unrepl/param :unrepl/line)
-                                                                       (tagged-literal 'unrepl/param :unrepl/col)))])}}]))))
+                                                                       (tagged-literal 'unrepl/param :unrepl/column)))])}}]))))
           ensure-raw-repl (fn []
                             (when (and @in-eval @unrepl) ; reading from eval!
                               (var-set unrepl false)
