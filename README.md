@@ -252,13 +252,6 @@ Three parameters: `:unrepl/filename` (string), `:unrepl/line` (integer) and `:un
 
 Sets the filename, line and column numbers for subsequent evaluations. The reader will update the line and column numbers as it reads more input. 
 
-#### `:unrepl.jvm/enable-sideloader`
-
-No parameter. Installs a classloader that asks the client for classes and resources when not found on the server.
-
-So the client may be able to reply at any message `[:unrepl.jvm/find-class classname]` where classname is a string. The server expects either nil (not found) or the class/resource as a Base64-encoded string.
-
-
 ## License
 
 Copyright © 2017 Christophe Grand

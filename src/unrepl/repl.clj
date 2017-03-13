@@ -93,64 +93,18 @@
                   (recur 4 0))
                 (recur shift (bit-shift-left buf 6))))))))))
 
-(defn- base64-bytes [^String s]
-  (let [table (assoc (zipmap "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/" (range))
-                \= 0)
-        bos (java.io.ByteArrayOutputStream.)
-        n (count s)]
-    (loop [i 0 buf 0 shift 10]
-      (when (< i n)
-        (let [c (.charAt s i)
-              buf (bit-or buf (bit-shift-left (table c) shift))]
-          (if (= shift 10)
-            (recur (inc i) buf 4)
-            (when-not (= \= c)
-              (.write bos (unchecked-int (bit-shift-right buf 8)))
-              (recur (inc i) (bit-shift-left buf 8) (+ shift 2)))))))
-    (.toByteArray bos)))
-
-(defmacro ^:private with-lock [lock & body]
-  `(let [^java.util.concurrent.locks.Lock lock# ~lock]
-     (.lock lock#)
-     (try
-       ~@body
-       (finally
-         (.unlock lock#)))))
-
 (defn start []
   ; TODO: tighten by removing the dep on m/repl
-  ; and big clean up of the modes (unrepl/raw, input-locking) management
   (with-local-vars [in-eval false
                     command-mode false
                     unrepl false
                     eval-id 0
                     prompt-vars #{#'*ns* #'*warn-on-reflection*}
                     current-eval-future nil]
-    (let [CTRL-C \u0003
-          CTRL-D \u0004
-          CTRL-P \u0010
-          CTRL-Z \u001A
-          raw-out *out*
-          input-lock (java.util.concurrent.locks.ReentrantLock.)
-          write (atomic-write raw-out)
-          edn-out (tagging-writer :out write)
-          current-eval-thread+promise (atom nil)
+    (let [current-eval-thread+promise (atom nil)
           elision-store (weak-store '... (tagged-literal 'unrepl/... nil))
           attachment-store (weak-store 'file (constantly nil))
           commands (assoc commands
-                     'enable-sideloader
-                     (fn []
-                       (var-set clojure.lang.Compiler/LOADER
-                         (unrepl.ClassLoader. (var-get clojure.lang.Compiler/LOADER)
-                           (fn [name]
-                             (when @unrepl
-                               (with-lock input-lock
-                                 (when @unrepl
-                                   (write [:unrepl.jvm/find-class name])
-                                   (with-bindings {in-eval false}
-                                     (when-some [s (read)]
-                                       (base64-bytes s)))))))))
-                       :sideloader-enabled)
                      '... (:get elision-store)
                      'file (comp (fn [inf]
                                    (if-some [in (inf)]
@@ -158,6 +112,13 @@
                                        (base64-str in))
                                      (tagged-literal 'unrepl/... nil)))
                              (:get attachment-store)))
+          CTRL-C \u0003
+          CTRL-D \u0004
+          CTRL-P \u0010
+          CTRL-Z \u001A
+          raw-out *out*
+          write (atomic-write raw-out)
+          edn-out (tagging-writer :out write)
           ensure-unrepl (fn []
                           (var-set command-mode false)
                           (when-not @unrepl
@@ -177,12 +138,9 @@
                                                                      (list 'set-file-line-col
                                                                        (tagged-literal 'unrepl/param :unrepl/sourcename)
                                                                        (tagged-literal 'unrepl/param :unrepl/line)
-                                                                       (tagged-literal 'unrepl/param :unrepl/column)))])
-                                                                :unrepl.jvm/enable-sideloader
-                                                                (tagged-literal 'unrepl/raw (str CTRL-P "(enable-sideloader)"))}}]))))
+                                                                       (tagged-literal 'unrepl/param :unrepl/column)))])}}]))))
           ensure-raw-repl (fn []
                             (when (and @in-eval @unrepl) ; reading from eval!
-                              (.lock input-lock)
                               (var-set unrepl false)
                               (write [:bye nil])
                               (flush)
@@ -203,35 +161,27 @@
           (fn [form]
             (let [bindings (get-thread-bindings)
                   p (promise)]
-              (var-set current-eval-future
-                (.submit eval-executor
-                  ^Callable
-                  (fn []
-                    (reset! current-eval-thread+promise [(Thread/currentThread) p])
-                    (with-bindings bindings
-                      (try
-                        (let [v (with-bindings {in-eval true} (eval form))]
-                          (deliver p {:value v :bindings (get-thread-bindings)})
-                          v)
-                        (catch Throwable t
-                          (deliver p {:caught t :bindings (get-thread-bindings)})
-                          (throw t))
-                        (finally
-                          (when (.isHeldByCurrentThread input-lock)
-                            (.unlock input-lock))))))))
+               (var-set current-eval-future
+                 (.submit eval-executor
+                   ^Callable
+                   (fn []
+                     (reset! current-eval-thread+promise [(Thread/currentThread) p])
+                     (with-bindings bindings
+                       (try
+                         (let [v (with-bindings {in-eval true} (eval form))]
+                           (deliver p {:value v :bindings (get-thread-bindings)})
+                           v)
+                         (catch Throwable t
+                           (deliver p {:caught t :bindings (get-thread-bindings)})
+                           (throw t)))))))
                (loop []
                  (or (deref p 40 nil)
-                   (when @unrepl
-                     (with-lock input-lock
-                       (when @unrepl
-                         (let [c (.read *in*)]
-                           (when-not (or (Character/isWhitespace c) (= \, c))
-                             (cond
-                               (= (int CTRL-C) c) (interrupt!)
-                               (= (int CTRL-Z) c) (background!)
-                               :else (.unread *in* c))
-                             true)))))
-                   (recur)))
+                   (let [c (.read *in*)]
+                     (cond
+                       (or (Character/isWhitespace c) (= \, c)) (recur)
+                       (= (int CTRL-C) c) (interrupt!)
+                       (= (int CTRL-Z) c) (background!)
+                       :else (.unread *in* c)))))
                (let [{:keys [bindings caught value interrupted]} @p]
                  (reset! current-eval-thread+promise nil)
                  (var-set current-eval-future nil)
