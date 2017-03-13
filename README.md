@@ -83,7 +83,11 @@ The first message must be a `:unrepl/hello`. It's the only message whose tag is 
 
 Its payload is a map which may have a `:commands` key mapping to a map of command ids (keywords) to template messages.
 
-This is how an unrepl implementtaion advertises its capabilities: by listing them along a machine-readable specification of the message to send to trigger them.
+This is how an unrepl implementation advertises its capabilities: by listing them along a machine-readable specification of the message to send to trigger them.
+
+The hello map may also have a `:session` key which is just an identifier (any type) allowing a client to recognize a session it has already visited (eg when getting a `:unrepl/hello` after a `:bye`).
+
+The hello map may also have a `:about` key mapped to a map. The intent of this map is to contain information about the REPL implementation, supported language, running environment (VM, OS etc.).
 
 #### `:bye`
 
