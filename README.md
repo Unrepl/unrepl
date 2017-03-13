@@ -10,15 +10,13 @@ An unrepl repl is just a REPL with a fancy printer.
 
 This document is a work in progress. A companion implementation is available in the `unrepl.repl` namespace.
 
-`lein run -m unrepl.repl/start` at the commande line or `(unrepl.repl/start)` to start an unrepl inside a regular repl. Type `^D` to exit back to the original repl. (Actually, in a term, type `^V^D` to prevent it from interpreting `^D`; if you know how to enter control chars with `rlwrap` let me know!) 
-
 The output (edn messages) & input specification (message templates) is mostly done. What is left to specify is:
 
  * some standard (but optional) commands
 
  * some parameters.
 
-You can ask questions on the `#unrepl` channel on the Clojurians Slack.
+You can ask questions and share feedback on the `#unrepl` channel on the Clojurians Slack.
 
 ## Background
 
@@ -30,7 +28,17 @@ REPL: the ultimate content negotiation protocol!
 
 The present repository suggests representations for machine-to-machine REPLs and provides a reference implementation.
 
+A REPL by nature is a very sequential process: it reads then evals, then prints and then starts over. One REPL = One thread. Concurrency is achieved by having several REPLs.
+
+A REPL is also stateful, it is a connected protocol, so the context doesn't need to be transferred constantly.
+
+A REPL is meant for evaluating code.
+
+It follows that some tooling needs (e.g. autocompletion) may be better serviced by a separate connection which may not be a REPL (but may have started as a REPL upgraded to something else).
+
 ## Usage
+
+`lein run -m unrepl.repl/start` at the commande line or `(unrepl.repl/start)` to start an unrepl inside a regular repl. Type `^D` to exit back to the original repl. (Actually, in a term, type `^V^D` to prevent it from interpreting `^D`; if you know how to enter control chars with `rlwrap` let me know!) 
 
 ## Spec
 
