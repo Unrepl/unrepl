@@ -254,9 +254,10 @@ Sets the filename, line and column numbers for subsequent evaluations. The reade
 
 #### `:unrepl.jvm/enable-sideloader`
 
-No parameter. Installs a classloader that, when a class or resource is not found on the server, takes over the REPL to asks the client for help.
+No parameter. Installs a classloader that asks the client for classes and resources when not found on the server.
 
-So the client may be able to reply at any message `[:unrepl.jvm/find-class classname]` where classname is a string. The server expects either nil (not found) or the class/resource as a Base64-encoded string. Once `nil` or the bytes sent to the server execution resumes as usual.
+So the client may be able to reply at any message `[:unrepl.jvm/find-class classname]` where classname is a string. The server expects either nil (not found) or the class/resource as a Base64-encoded string.
+
 
 ## License
 
