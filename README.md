@@ -42,9 +42,11 @@ It follows that some tooling needs (e.g. autocompletion) may be better serviced 
 
 ## Spec
 
-### Reserved keywords
+### Reserved keywords and extensions
 
-All simple (not qualified) keywords and all keywords in the `unrepl` namespaces are reserved.
+All simple (not qualified) keywords, the `unrepl` namespace and all namespaces starting by `unrepl.` are reserved.
+
+This protocol is designed to be extended, extensions just have to be namespaced and designed in a way that a client can ignore messages from unknown extensions.
 
 ### Streams format
 
