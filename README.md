@@ -10,6 +10,8 @@ An unrepl repl is just a REPL with a fancy printer.
 
 This document is a work in progress. A companion implementation is available in the `unrepl.repl` namespace.
 
+** ALL INPUT-RELATED SPECIFICATION IS TO BE REPLACED SHORTLY ** 
+
 The output (edn messages) & input specification (message templates) is mostly done. What is left to specify is:
 
  * some standard (but optional) commands
@@ -85,6 +87,8 @@ Its payload is a map which may have a `:commands` key mapping to a map of comman
 
 This is how an unrepl implementation advertises its capabilities: by listing them along a machine-readable specification of the message to send to trigger them.
 
+The hello map may also have an `:escape` key which is an escape sequence (a string) to be sent before commands. Example values are `"\uOO10"` (unlikely even if non-escaped characters are legit inside strings) or `"\uE5CA\n[)\"[)"` which can't happen in readable clojure code. The `U+E5CA` is a (private use code point)[https://en.wikipedia.org/wiki/Private_Use_Areas] and its sole role is to make buffering of the input an unlikely occurence.
+
 The hello map may also have a `:session` key which is just an identifier (any type) allowing a client to recognize a session it has already visited (eg when getting a `:unrepl/hello` after a `:bye`).
 
 The hello map may also have a `:about` key mapped to a map. The intent of this map is to contain information about the REPL implementation, supported language, running environment (VM, OS etc.).
@@ -141,7 +145,7 @@ Printing should be bound in length and depth. When the printer decides to elidea
 Example: machine printing `(range)`
 
 ```clj
-(0 1 2 3 4 5 6 7 8 9 #unrepl/... {:get #unrepl/raw "(tmp1234/get :G__8391)"})
+(0 1 2 3 4 5 6 7 8 9 #unrepl/... {:get (tmp1234/get :G__8391)})
 ```
 
 ##### Rendering
@@ -157,9 +161,9 @@ So continuing the `(range)` example:
 
 ```clj
 > (range)
-< (0 1 2 3 4 5 6 7 8 9 #unrepl/... {:get #unrepl/raw "(tmp1234/get :G__8391)"})
-> (tmp1234/get :G__8391)"
-< (10 11 12 13 14 15 16 17 18 19 #unrepl/... {:get #unrepl/raw "(tmp1234/get :G__8404)"})
+< (0 1 2 3 4 5 6 7 8 9 #unrepl/... {:get (tmp1234/get :G__8391)})
+> (tmp1234/get :G__8391)
+< (10 11 12 13 14 15 16 17 18 19 #unrepl/... {:get (tmp1234/get :G__8404)})
 ```
 
 ##### Caveats
@@ -181,50 +185,14 @@ which is not readable. Hence the necessity of `:id` or `:get` to provide unique 
 
 Some values may print to `#unrepl/mime m` where m is a map with keys: `:content-type` (optional, string, defaults to "application/octet-stream"), `:content-length` (optional, number), `:filename` (optional, string), `:details` (optional, anything, a representation of the object (eg for a `java.io.File` instance it could be the path and the class)), `:content` (optional base64-encoded) and `:get` (message template).
 
+### Escape sequences
+When the escape sequence is encountered, all pending forms are discarded: characters preceding the escape sequence are effectively skipped.
+
+For example if the input stream is `(+ 1 2)(do ESC` (where `ESC` is the escape sequence) then `(do ` is skipped.
+
 ### Message Templates
 
-A message template is an executable description of the expected message.
-
-They always start by a tagged-literal named an encoding. This document specifies two encodings: `unrepl/raw` and `unrepl/edn`.
-
-Qualified keywords tagged by `unrepl/param` are to be substituted by their value.
-
-#### `unrepl/edn` encoding
-
-The form is left intact except for `#unrepl/param :some/param` that are replaced by their value. The resulting form is serialized as edn.
-
-#### `unrepl/raw` encoding
-
-When the form is a character or a string, it is send as is.
-When the form is a vector, its components are recursively visited -- thus it denotes concatenation.
-When the form is an encoding, it's serialized according to this encoding.
-
-#### Examples
-
-A very simple one:
-
-```clj
-#unrepl/raw \0003 ; no param always write ^C
-```
-
-A composite one:
-
-```clj
-#unrepl/raw [\u0010 #unrepl/edn (set-file-line-col #unrepl/param :unrepl/sourcename #unrepl/param :unrepl/line #unrepl/param :unrepl/col)]
-```
-
-There's a helper client namespace (`unrepl.client`) to compose messages from a message template and a map of parameters:
-
-```clj
-=> (unrepl.client/msg-str 
-     (clojure.edn/read-string {:default tagged-literal}
-     "#unrepl/raw [\\u0010 #unrepl/edn (set-file-line-col #unrepl/param :unrepl/sourcename #unrepl/param :unrepl/line #unrepl/param :unrepl/col)]")
-     {:unrepl/sourcename "demo.clj"
-      :unrepl/line 12
-      :unrepl/col 36})
-
-"\u0010(set-file-line-col \"demo.clj\" 12 36)"
-```
+A message template is an executable description of the expected message. It's a parametrized edn form: qualified keywords tagged by `unrepl/param` are to be substituted by their value. The resulting form is serialized as edn.
 
 ### Commands
 
@@ -251,6 +219,12 @@ Upon completion of the future no message is sent.
 Three parameters: `:unrepl/filename` (string), `:unrepl/line` (integer) and `:unrepl/command` (integer).
 
 Sets the filename, line and column numbers for subsequent evaluations. The reader will update the line and column numbers as it reads more input. 
+
+#### `:echo`
+
+One boolean parameter. When enabled, all evaluated forms are echoed back (as strings in an `:echo` message).
+
+#### `:mute-on-upgrade`
 
 ## License
 
