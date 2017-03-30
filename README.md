@@ -10,8 +10,6 @@ An unrepl repl is just a REPL with a fancy printer.
 
 This document is a work in progress. A companion implementation is available in the `unrepl.repl` namespace.
 
-** ALL INPUT-RELATED SPECIFICATION IS TO BE REPLACED SHORTLY ** 
-
 The output (edn messages) & input specification (message templates) is mostly done. What is left to specify is:
 
  * more standard (but optional) actions
@@ -38,7 +36,11 @@ A REPL is meant for evaluating code.
 
 It follows that some tooling needs (e.g. autocompletion) may be better serviced by a separate connection which may not be a REPL (but may have started as a REPL upgraded to something else).
 
+Parts of this specification assumes two REPLs: the main (or user) REPL and the control (or client) REPL.
+
 ## Usage
+
+** THE IMPL REFLECTS A PREVIOUS VERSION OF THE SPEC **
 
 `lein run -m unrepl.repl/start` at the command line or `(unrepl.repl/start)` to start an unrepl inside a regular repl.
 
@@ -231,7 +233,7 @@ This actions expects a parameter `:unrepl/mute-mode` which can be one of:
 
  * `:block` (default behavior),
  * `:mute` (aka `/dev/null`),
- * `:redirect` which redirects all outs to the repl in which the action has been issued. 
+ * `:redirect` which redirects all outs to the control repl in which the action has been issued. 
 
 ## License
 
