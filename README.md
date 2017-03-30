@@ -104,6 +104,7 @@ Example:
 ```clj
 < [:prompt {:ns #object[clojure.lang.Namespace 0x2d352c62 "unrepl.core"], :*warn-on-reflection* nil}]
 > (loop [] (let [c (char (.read *in*))] (case c \# :ciao (do (println "RAW" c) (recur)))))
+< [:started-eval {} 1]
 < [:bye nil]
 > A
 < RAW A
@@ -206,7 +207,17 @@ Three parameters: `:unrepl/filename` (string), `:unrepl/line` (integer) and `:un
 
 Sets the filename, line and column numbers for subsequent evaluations. The reader will update the line and column numbers as it reads more input. 
 
-##### `:enable-side-loading`
+##### `:unrepl.jvm/start-side-loader`
+
+Upgrades the control REPL where it is issued to a sideloading session.
+
+When a sideloading session is started the JVM will ask the client for classes or resources it does not have, basically this allows the extension of the classpath.
+
+A sideloading session is a very simple edn-protocol.
+
+It starts by `[:unrepl.jvm/sideloader]` preamble and a then a serie of request/responses initiatted by the server: the client waits for messages `[:find-resource "resource/name"]` or `[:find-class "some.class.name"]` and replies either `nil` or a base64-encoded string representation of the file.
+
+The only way to terminate a sideloading session is to close the connection.
 
 ##### `:echo`
 
