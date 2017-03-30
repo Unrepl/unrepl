@@ -14,7 +14,7 @@ This document is a work in progress. A companion implementation is available in 
 
 The output (edn messages) & input specification (message templates) is mostly done. What is left to specify is:
 
- * some standard (but optional) commands
+ * more standard (but optional) actions
 
  * some parameters.
 
@@ -40,7 +40,7 @@ It follows that some tooling needs (e.g. autocompletion) may be better serviced 
 
 ## Usage
 
-`lein run -m unrepl.repl/start` at the commande line or `(unrepl.repl/start)` to start an unrepl inside a regular repl. Type `^D` to exit back to the original repl. (Actually, in a term, type `^V^D` to prevent it from interpreting `^D`; if you know how to enter control chars with `rlwrap` let me know!) 
+`lein run -m unrepl.repl/start` at the command line or `(unrepl.repl/start)` to start an unrepl inside a regular repl.
 
 ## Spec
 
@@ -52,7 +52,7 @@ This protocol is designed to be extended, extensions just have to be namespaced 
 
 ### Streams format
 
-The input is expected to be free form (a character stream). The default behavior to be expected is evaluation. (It's a rEpl after all.)
+The input is expected to be free form (a character stream)
 
 The output is a stream of EDN datastructures.
 
@@ -64,15 +64,15 @@ To be more precise it's a stream of 2/3-item tuples:
 
 The purpose of the tag is to allow demultiplexing things that are usually intermingled in a repl display.
 
-Eight core tags are defined: `:unrepl/hello`, `:bye`, `:prompt`, `:eval`, `:command`, `:out`, `:err` and `:exception`. More tags are defined in standard commands.
+Eight core tags are defined: `:unrepl/hello`, `:bye`, `:prompt`, `:started-eval`, `:eval`, `:out`, `:err` and `:exception`. More tags are defined in standard actions.
 
 | Tag | Payload |
 |-----|---------|
-|`:unrepl/hello`|A map|
-|`:bye`|`nil`|
+|`:unrepl/hello`|A map or nil|
+|`:bye`|A map or nil|
 |`:prompt`|A map of qualified symbols (var names) to their values|
+|`:started-eval`|A map or nil|
 |`:eval`|The evaluation result|
-|`:command`|The command result|
 |`:out`|A string|
 |`:err`|A string|
 |`:exception`|The exception|
@@ -83,11 +83,9 @@ Messages not understood by a client should be ignored.
 
 The first message must be a `:unrepl/hello`. It's the only message whose tag is qualified. It's namespaced to make sniffing the protocol easier. (For example when connecting to a socket you may either get an existing unrepl repl or a standard repl that you are going to upgrade.)
 
-Its payload is a map which may have a `:commands` key mapping to a map of command ids (keywords) to template messages.
+Its payload is a map which may have a `:actions` key mapping to a map of action ids (keywords) to template messages. All those actions should be specific to the session.
 
 This is how an unrepl implementation advertises its capabilities: by listing them along a machine-readable specification of the message to send to trigger them.
-
-The hello map may also have an `:escape` key which is an escape sequence (a string) to be sent before commands. Example values are `"\uOO10"` (unlikely even if non-escaped characters are legit inside strings) or `"\uE5CA\n[)\"[)"` which can't happen in readable clojure code. The `U+E5CA` is a (private use code point)[https://en.wikipedia.org/wiki/Private_Use_Areas] and its sole role is to make buffering of the input an unlikely occurence.
 
 The hello map may also have a `:session` key which is just an identifier (any type) allowing a client to recognize a session it has already visited (eg when getting a `:unrepl/hello` after a `:bye`).
 
@@ -116,7 +114,7 @@ Example:
 < RAW 
 < 
 > # 
-< [:unrepl/hello {:commands {}}]
+< [:unrepl/hello {:actions {}}]
 < [:eval :ciao 1]
 < [:prompt {:ns #object[clojure.lang.Namespace 0x2d352c62 "unrepl.core"], :*warn-on-reflection* nil}]
 ```
@@ -185,46 +183,55 @@ which is not readable. Hence the necessity of `:id` or `:get` to provide unique 
 
 Some values may print to `#unrepl/mime m` where m is a map with keys: `:content-type` (optional, string, defaults to "application/octet-stream"), `:content-length` (optional, number), `:filename` (optional, string), `:details` (optional, anything, a representation of the object (eg for a `java.io.File` instance it could be the path and the class)), `:content` (optional base64-encoded) and `:get` (message template).
 
-### Escape sequences
-When the escape sequence is encountered, all pending forms are discarded: characters preceding the escape sequence are effectively skipped.
-
-For example if the input stream is `(+ 1 2)(do ESC` (where `ESC` is the escape sequence) then `(do ` is skipped.
-
 ### Message Templates
 
-A message template is an executable description of the expected message. It's a parametrized edn form: qualified keywords tagged by `unrepl/param` are to be substituted by their value. The resulting form is serialized as edn.
+A message template is an executable description of the expected message. It's a parametrized edn form: all keywords (save those tagged by `#unrepl/quote` are to be substituted by their value. The resulting form is serialized as edn and sent to a repl.
 
-### Commands
+### Actions
 
-All commands are optional.
+All actions are optional.
 
-The `:interrupt` and `:background-current-eval` commands are kind of special because they require reading while evaluation is going on. To preserve the single-thread model of a REPL care should be taken to not use the reader to recognize these commands have been issued. 
+#### Session actions
+(Advertised in `:unrepl/hello` messages.)
 
-#### `:exit`
+##### `:exit`
 
 No parameter. Exit the repl, close the connection.
 
-#### `:interrupt`
+##### `:set-source`
 
-No parameter. Aborts the current running evaluation. Upon success a `[:interrupted nil id]` message is written (where `id` is the group id (if any) of the current evaluation).
-
-#### `:background-current-eval`
-
-No parameter. Transforms the current running evaluation in a Future. Upon success a `[:eval future id]` message is written (where `id` is the group id (if any) of the current evaluation).
-
-Upon completion of the future no message is sent.
-
-#### `:set-source`
-
-Three parameters: `:unrepl/filename` (string), `:unrepl/line` (integer) and `:unrepl/command` (integer).
+Three parameters: `:unrepl/filename` (string), `:unrepl/line` (integer) and `:unrepl/column` (integer).
 
 Sets the filename, line and column numbers for subsequent evaluations. The reader will update the line and column numbers as it reads more input. 
 
-#### `:echo`
+##### `:enable-side-loading`
 
-One boolean parameter. When enabled, all evaluated forms are echoed back (as strings in an `:echo` message).
+##### `:echo`
 
-#### `:mute-on-upgrade`
+#### Eval actions
+(Advertised in `:started-eval` messages.)
+
+##### `:interrupt`
+
+No parameter. Aborts the current running evaluation. Upon success a `[:interrupted nil id]` message is written (where `id` is the group id (if any) of the current evaluation).
+
+##### `:background`
+
+No parameter. Transforms the current running evaluation in a Future. Upon success returns true (to the control repl) and the evaluation (in the main repl) immediatly returns `[:eval a-future id]`.
+
+Upon completion of the future a `[:bg-eval value id]` is sent (on the main repl).
+
+#### Bye actions
+(Advertised in `:bye` messages.)
+
+##### `:set-mute-mode`
+By default all spurious output is blocked after a `:bye` message.
+
+This actions expects a parameter `:unrepl/mute-mode` which can be one of:
+
+ * `:block` (default behavior),
+ * `:mute` (aka `/dev/null`),
+ * `:redirect` which redirects all outs to the repl in which the action has been issued. 
 
 ## License
 
