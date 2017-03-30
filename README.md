@@ -203,7 +203,13 @@ No parameter. Exit the repl, close the connection.
 
 ##### `:set-source`
 
-Three parameters: `:unrepl/filename` (string), `:unrepl/line` (integer) and `:unrepl/column` (integer).
+Three parameters: 
+
+```clj
+(spec/def :unrepl/filename string?)
+(spec/def :unrepl/line integer?)
+(spec/def :unrepl/column integer?)
+```
 
 Sets the filename, line and column numbers for subsequent evaluations. The reader will update the line and column numbers as it reads more input. 
 
@@ -220,6 +226,26 @@ It starts by `[:unrepl.jvm/sideloader]` preamble and a then a serie of request/r
 The only way to terminate a sideloading session is to close the connection.
 
 ##### `:echo`
+
+Echo is meant to help tools to relate outputs to inputs. It can be especially useful whene several forms are sent in a batch or when syntax errors happen and the reader resumes reading.
+
+Parameter:
+
+```clj
+(spec/def :unrepl/echo-mode #{:off :on :full})
+```
+
+Returns: true if the desired echo mode has been set, else falsey.
+
+When the echo mode is not `:off`, `:echo` messages are sent before `:started-eval`.
+
+In `:on` mode, a message looks like:
+
+```clj
+[:echo {:file "" :start-line N :end-line N :start-column N :end-column N :offset N :len N} 1]
+```
+
+In `:full` mode an additional `:text` key is present containing the actual input (as a string).
 
 #### Eval actions
 (Advertised in `:started-eval` messages.)
@@ -239,6 +265,14 @@ Upon completion of the future a `[:bg-eval value id]` is sent (on the main repl)
 
 ##### `:set-mute-mode`
 By default all spurious output is blocked after a `:bye` message.
+
+Parameter:
+
+```clj
+(spec/def :unrepl/mute-mode #{:block :mute :redirect})
+```
+
+Returns true on success.
 
 This actions expects a parameter `:unrepl/mute-mode` which can be one of:
 
