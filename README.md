@@ -77,7 +77,7 @@ Eight core tags are defined: `:unrepl/hello`, `:bye`, `:prompt`, `:started-eval`
 |`:eval`|The evaluation result|
 |`:out`|A string|
 |`:err`|A string|
-|`:exception`|The exception|
+|`:exception`|A map|
 
 Messages not understood by a client should be ignored.
 
@@ -121,6 +121,16 @@ Example:
 < [:eval :ciao 1]
 < [:prompt {:ns #object[clojure.lang.Namespace 0x2d352c62 "unrepl.core"], :*warn-on-reflection* nil}]
 ```
+
+#### `:exception`
+
+The payload is a map with a required key `:ex` which maps to the exception and a second optional key `:phase` which can take 5 values:
+
+ * `:unknown` (default) no indication on the source of the exception,
+ * `:read`, the exception occured during `read` and is more likely a syntax error (may be an IO or any exception when `*read-eval*` is used),
+ * `:eval`, the exception occured during `eval`
+ * `:eval`, the exception occured during `print`
+ * `:repl`, the exception occured in the repl code itself, fill an issue.
 
 ### Machine printing
 Pretty printing is meant for humans and should be performed on the client.
