@@ -185,10 +185,8 @@
                        (catch Throwable t
                          (deliver p {:ex t :bindings (get-thread-bindings)})
                          (throw t))))]
-                (println "preswap")
                 (swap! session-state update :current-eval
                   into {:eval-id @eval-id :promise p :future f})
-                (println "prederef")
                 (let [{:keys [ex eval bindings]} @p]
                   (doseq [[var val] bindings]
                     (var-set var val))
@@ -196,7 +194,6 @@
                     (throw ex)
                     eval)))
               (finally
-                (println "finally")
                 (swap! session-state assoc :current-eval {}))))]
       (swap! sessions assoc session-id session-state)
       (binding [*out* raw-out
