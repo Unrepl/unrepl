@@ -62,7 +62,7 @@
                            (recur))))
     {:put (fn [xs]
             (let [x (if (nil? xs) () xs)
-                  id (gensym)
+                  id (keyword (gensym))
                   wref (java.lang.ref.WeakReference. xs refq)]
               (swap! weakrefs-to-ids assoc wref id)
               (swap! ids-to-weakrefs assoc id wref)
