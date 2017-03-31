@@ -95,6 +95,8 @@
    
    clojure.lang.Namespace #(tagged-literal 'unrepl/ns (ns-name %))
    
+   java.util.regex.Pattern #(tagged-literal 'unrepl/pattern (str %))
+   
    Object
    (fn [x]
      (tagged-literal 'unrepl/object

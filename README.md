@@ -145,6 +145,8 @@ Namespaces are printed as `#unrepl/ns name.sp.ace`.
 
 Metadata is preinted as `#unrepl/meta [{meta data} value]`.
 
+Patterns (regexes) are printed as `#unrepl/pattern "[0-9]+"`.
+
 Objects are printed as `#unrepl/object [class "id" representation]`. The representation is implementation dependent. One may use an elided map representation to allow browsing the object graph.
 
 #### Ellipsis or elisions
