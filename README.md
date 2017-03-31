@@ -40,8 +40,6 @@ Parts of this specification assumes two REPLs: the main (or user) REPL and the c
 
 ## Usage
 
-** THE IMPL REFLECTS A PREVIOUS VERSION OF THE SPEC **
-
 `lein run -m unrepl.repl/start` at the command line or `(unrepl.repl/start)` to start an unrepl inside a regular repl.
 
 ## Spec

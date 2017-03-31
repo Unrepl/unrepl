@@ -24,7 +24,9 @@
 
 (defn atomic-write [^java.io.Writer w]
   (fn [x]
-    (let [s (p/edn-str x)] ; was pr-str, must occur outside of the locking form to avoid deadlocks
+    (let [s (try (p/edn-str x) ; was pr-str, must occur outside of the locking form to avoid deadlocks
+              (catch Throwable t
+                (throw (ex-info "Exception while printing." {::ex t ::phase :print} t))))]
       (locking w
         (.write w s)
         (.write w "\n")
@@ -48,7 +50,7 @@
                                       (.setLineNumber *in* line)
                                       (some-> field (.set *in* col))))})
 
-(defn weak-store [sym not-found]
+(defn weak-store [make-action not-found]
   (let [ids-to-weakrefs (atom {})
         weakrefs-to-ids (atom {})
         refq (java.lang.ref.ReferenceQueue.)]
@@ -64,7 +66,7 @@
                   wref (java.lang.ref.WeakReference. xs refq)]
               (swap! weakrefs-to-ids assoc wref id)
               (swap! ids-to-weakrefs assoc id wref)
-              {:get (tagged-literal 'unrepl/raw (str "\u0010" (p/full-edn-str (list sym id))))}))
+              {:get (make-action id)}))
      :get (fn [id]
             (or (some-> @ids-to-weakrefs ^java.lang.ref.WeakReference (get id) .get)
               not-found))}))
@@ -93,104 +95,110 @@
                   (recur 4 0))
                 (recur shift (bit-shift-left buf 6))))))))))
 
+(defonce ^:private sessions (atom {}))
+
+(defonce ^:private elision-store (weak-store #(list `fetch %) (tagged-literal 'unrepl/... nil)))
+(defn fetch [id] ((:get elision-store) id))
+
+(defonce ^:private attachment-store (weak-store #(list `download %) (constantly nil)))
+(defn download [id] ((:get attachment-store) id))
+
+(defn interrupt! [session eval]
+  (let [{:keys [^Thread thread eval-id promise]}
+        (some-> @sessions (get session) deref :current-eval)]
+    (when (and (= eval eval-id)
+            (deliver promise
+              {:ex (doto (ex-info "Evaluation interrupted" {::phase :eval})
+                     (.setStackTrace (.getStackTrace thread)))
+               :bindings {}}))
+      (.stop thread)
+      true)))
+
+(defn background! [session eval]
+  (let [{:keys [eval-id promise future]}
+        (some-> @sessions (get session) deref :current-eval)]
+    (boolean
+      (and
+        (= eval eval-id)
+        (deliver promise
+          {:eval future
+           :bindings {}})))))
+
 (defn start []
   ; TODO: tighten by removing the dep on m/repl
   (with-local-vars [in-eval false
-                    command-mode false
                     unrepl false
                     eval-id 0
                     prompt-vars #{#'*ns* #'*warn-on-reflection*}
                     current-eval-future nil]
-    (let [current-eval-thread+promise (atom nil)
-          elision-store (weak-store '... (tagged-literal 'unrepl/... nil))
-          attachment-store (weak-store 'file (constantly nil))
-          commands (assoc commands
-                     '... (:get elision-store)
-                     'file (comp (fn [inf]
-                                   (if-some [in (inf)]
-                                     (with-open [^java.io.InputStream in in]
-                                       (base64-str in))
-                                     (tagged-literal 'unrepl/... nil)))
-                             (:get attachment-store)))
-          CTRL-C \u0003
-          CTRL-D \u0004
-          CTRL-P \u0010
-          CTRL-Z \u001A
+    (let [session-id (keyword (gensym "session"))
+          session-state (atom {:current-eval {}})
+          current-eval-thread+promise (atom nil)
           raw-out *out*
           write (atomic-write raw-out)
           edn-out (tagging-writer :out write)
           ensure-unrepl (fn []
-                          (var-set command-mode false)
                           (when-not @unrepl
                             (var-set unrepl true)
                             (flush)
                             (set! *out* edn-out)
                             (binding [*print-length* Long/MAX_VALUE
                                       *print-level* Long/MAX_VALUE]
-                              (write [:unrepl/hello {:commands {:interrupt (tagged-literal 'unrepl/raw CTRL-C)
-                                                                :exit (tagged-literal 'unrepl/raw CTRL-D)
-                                                                :background-current-eval
-                                                                (tagged-literal 'unrepl/raw CTRL-Z)
-                                                                :set-source
-                                                                (tagged-literal 'unrepl/raw
-                                                                  [CTRL-P
-                                                                   (tagged-literal 'unrepl/edn 
-                                                                     (list 'set-file-line-col
-                                                                       (tagged-literal 'unrepl/param :unrepl/sourcename)
-                                                                       (tagged-literal 'unrepl/param :unrepl/line)
-                                                                       (tagged-literal 'unrepl/param :unrepl/column)))])}}]))))
+                              (write [:unrepl/hello {:session session-id
+                                                     :actions {} #_{:exit (tagged-literal 'unrepl/raw CTRL-D)
+                                                                   :set-source
+                                                                   (tagged-literal 'unrepl/raw
+                                                                     [CTRL-P
+                                                                      (tagged-literal 'unrepl/edn 
+                                                                        (list 'set-file-line-col
+                                                                          (tagged-literal 'unrepl/param :unrepl/sourcename)
+                                                                          (tagged-literal 'unrepl/param :unrepl/line)
+                                                                          (tagged-literal 'unrepl/param :unrepl/column)))])}}]))))
           ensure-raw-repl (fn []
                             (when (and @in-eval @unrepl) ; reading from eval!
                               (var-set unrepl false)
                               (write [:bye nil])
                               (flush)
                               (set! *out* raw-out)))
-          eval-executor (java.util.concurrent.Executors/newCachedThreadPool)
-          interruption (ex-info "Interrupted" {})
-          interrupt! (fn []
-                       (when-some [[^Thread t p] @current-eval-thread+promise]
-                         (reset! current-eval-thread+promise nil)
-                         (deliver p {:interrupted true})
-                         (when (:interrupted @p)
-                           (.stop t)
-                           #_(.join t)))) ; seems to block forever, to investigate
-          background! (fn []
-                        (when-some [[^Thread t p] @current-eval-thread+promise]
-                          (deliver p {:value @current-eval-future :bindings {}})))
+          
           interruptible-eval
           (fn [form]
-            (let [bindings (get-thread-bindings)
-                  p (promise)]
-               (var-set current-eval-future
-                 (.submit eval-executor
-                   ^Callable
-                   (fn []
-                     (reset! current-eval-thread+promise [(Thread/currentThread) p])
-                     (with-bindings bindings
-                       (try
-                         (let [v (with-bindings {in-eval true} (eval form))]
-                           (deliver p {:value v :bindings (get-thread-bindings)})
-                           v)
-                         (catch Throwable t
-                           (deliver p {:caught t :bindings (get-thread-bindings)})
-                           (throw t)))))))
-               (loop []
-                 (or (deref p 40 nil)
-                   (let [c (.read *in*)]
-                     (cond
-                       (or (Character/isWhitespace c) (= \, c)) (recur)
-                       (= (int CTRL-C) c) (interrupt!)
-                       (= (int CTRL-Z) c) (background!)
-                       :else (.unread *in* c)))))
-               (let [{:keys [bindings caught value interrupted]} @p]
-                 (reset! current-eval-thread+promise nil)
-                 (var-set current-eval-future nil)
-                 (doseq [[v val] bindings]
-                   (var-set v val))
-                 (cond
-                   interrupted (throw interruption)
-                   caught (throw caught)
-                   :else value))))]
+            (try
+              (let [p (promise)
+                   f
+                   (future
+                     (swap! session-state update :current-eval
+                       assoc :thread (Thread/currentThread))
+                     (try
+                       (write [:started-eval
+                               {:actions 
+                                {:interrupt (list `interrupt! session-id @eval-id)
+                                 :background (list `background! session-id @eval-id)}}
+                               @eval-id])
+                       (let [v (with-bindings {in-eval true}
+                                 (try
+                                   (eval form)
+                                   (catch Throwable t
+                                     (throw (ex-info "Exception during evaluation" {::ex t ::phase :eval} t)))))]
+                         (deliver p {:eval v :bindings (get-thread-bindings)})
+                         v)
+                       (catch Throwable t
+                         (deliver p {:ex t :bindings (get-thread-bindings)})
+                         (throw t))))]
+                (println "preswap")
+                (swap! session-state update :current-eval
+                  into {:eval-id @eval-id :promise p :future f})
+                (println "prederef")
+                (let [{:keys [ex eval bindings]} @p]
+                  (doseq [[var val] bindings]
+                    (var-set var val))
+                  (if ex
+                    (throw ex)
+                    eval)))
+              (finally
+                (println "finally")
+                (swap! session-state assoc :current-eval {}))))]
+      (swap! sessions assoc session-id session-state)
       (binding [*out* raw-out
                 *err* (tagging-writer :err write)
                 *in* (-> *in* (pre-reader ensure-raw-repl) clojure.lang.LineNumberingPushbackReader.)
@@ -201,41 +209,27 @@
         (m/repl
           :prompt (fn []
                     (ensure-unrepl)
-                    (write [:prompt (into {:cmd @command-mode}
+                    (write [:prompt (into {}
                                       (map (fn [v]
                                              (let [m (meta v)]
                                                [(symbol (name (ns-name (:ns m))) (name (:name m))) @v])))
-                                      @prompt-vars)]))
+                                      (:prompt-vars @session-state))]))
           :read (fn [request-prompt request-exit]
-                  (ensure-unrepl)
-                  (loop []
-                      (let [n (.read *in*)]
-                        (if (neg? n)
-                          request-exit
-                          (let [c (char n)]
-                            (cond
-                              (or (Character/isWhitespace c) (= \, c)) (recur)
-                              (= CTRL-D c) request-exit
-                              (= CTRL-P c) (do (var-set command-mode true) (recur))
-                              :else (do 
-                                      (.unread *in* n)
-                                      (m/repl-read request-prompt request-exit))))))))
+                  (try
+                    (m/repl-read request-prompt request-exit)
+                    (catch Throwable t
+                      (throw (ex-info "Exception while reading" {::ex t ::phase :read} t)))))
           :eval (fn [form]
                   (let [id (var-set eval-id (inc @eval-id))]
                     (binding [*err* (tagging-writer :err id write)
                               *out* (tagging-writer :out id write)]
-                      (if @command-mode
-                        (let [command (get commands (first form))]
-                          (throw (ex-info "Command" {::command (apply command (rest form))})))
-                        (interruptible-eval form)))))
+                      (interruptible-eval form))))
           :print (fn [x]
                    (ensure-unrepl)
                    (write [:eval x @eval-id]))
           :caught (fn [e]
                     (ensure-unrepl)
-                    (cond
-                      (identical? e interruption)
-                      (write [:interrupted nil @eval-id])
-                      (::command (ex-data e))
-                      (write [:command (::command (ex-data e)) @eval-id])
-                      :else (write [:exception e @eval-id]))))))))
+                    (let [{:keys [::ex ::phase]
+                           :or {ex e phase :repl}} (ex-data e)]
+                      (write [:exception {:ex e :phase phase} @eval-id]))))))))
+

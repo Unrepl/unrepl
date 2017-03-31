@@ -173,7 +173,7 @@
         write (fn [^String s] (.write out s))]
     (binding [*print-readably* true
               *print-length* (or *print-length* 10)]
-      (print-on write x (or *print-level* 6))
+      (print-on write x (or *print-level* 8))
       (str out))))
 
 (defn full-edn-str [x]
