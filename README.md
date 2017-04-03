@@ -202,6 +202,16 @@ Example: printing the set `#{[1] [2]}` with a very shallow print depth and a (br
 
 which is not readable. Hence the necessity of `:id` or `:get` to provide unique ids.
 
+#### Lazy-seq errors
+
+When realization of a lazy sequence throws an exception the exception is inlined in the sequence representation and tagged with `unrepl/lazy-error`.
+
+For example, the value of `(map #(/ %) (iterate dec 3))` prints as:
+
+```clj
+(#unrepl/ratio [1 3] #unrepl/ratio [1 2] 1 #unrepl/lazy-error #error {:cause "Divide by zero", :via [{:type #unrepl.java/class java.lang.ArithmeticException, :message "Divide by zero", :at #unrepl/object [#unrepl.java/class java.lang.StackTraceElement "0x272298a" "clojure.lang.Numbers.divide(Numbers.java:158)"]}], :trace [#unrepl/... nil]})
+```
+
 #### MIME Attachments
 
 Some values may print to `#unrepl/mime m` where m is a map with keys: `:content-type` (optional, string, defaults to "application/octet-stream"), `:content-length` (optional, number), `:filename` (optional, string), `:details` (optional, anything, a representation of the object (eg for a `java.io.File` instance it could be the path and the class)), `:content` (optional base64-encoded) and `:get` (message template).

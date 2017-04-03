@@ -116,16 +116,16 @@
   (or *realize-on-print* (not (instance? clojure.lang.IPending s)) (realized? s)))
 
 (defn- elide-vs [vs print-length]
-  (loop [firsts [] vs vs]
-    (if (< (count firsts) print-length)
+  (cond
+    (pos? print-length)
+    (lazy-seq
       (if (may-print? vs)
         (if-some [[v :as vs] (blame-seq vs)]
-          (recur (conj firsts v) (rest vs))
-          firsts)
-        (conj firsts (tagged-literal 'unrepl/... (*elide* vs))))
-      (if (and (may-print? vs) (nil? (blame-seq vs)))
-        firsts
-        (conj firsts (tagged-literal 'unrepl/... (*elide* vs)))))))
+          (cons v (elide-vs (rest vs) (dec print-length)))
+          ())
+        (list (tagged-literal 'unrepl/... (*elide* vs)))))
+    (and (may-print? vs) (nil? (blame-seq vs))) ()
+    :else (list (tagged-literal 'unrepl/... (*elide* vs)))))
 
 (defn- elide-kvs [kvs print-length]
   (if-some [more-kvs (when print-length (seq (drop print-length kvs)))]
