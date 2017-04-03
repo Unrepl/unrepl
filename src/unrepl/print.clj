@@ -107,6 +107,11 @@
   "Set to false to avoid realizing lazy sequences."
   true)
 
+(defmacro ^:private blame-seq [& body]
+  `(try (seq ~@body)
+     (catch Throwable t#
+       (list (tagged-literal 'unrepl/lazy-error t#)))))
+
 (defn- may-print? [s]
   (or *realize-on-print* (not (instance? clojure.lang.IPending s)) (realized? s)))
 
@@ -114,9 +119,11 @@
   (loop [firsts [] vs vs]
     (if (< (count firsts) print-length)
       (if (may-print? vs)
-        (recur (conj firsts (first vs)) (rest vs))
+        (if-some [[v :as vs] (blame-seq vs)]
+          (recur (conj firsts v) (rest vs))
+          firsts)
         (conj firsts (tagged-literal 'unrepl/... (*elide* vs))))
-      (if (and (may-print? vs) (empty? vs))
+      (if (and (may-print? vs) (nil? (blame-seq vs)))
         firsts
         (conj firsts (tagged-literal 'unrepl/... (*elide* vs)))))))
 
