@@ -103,11 +103,22 @@
        [(class x) (format "0x%x" (System/identityHashCode x)) (object-representation x)]))})
 
 (def ^:dynamic *elide* (constantly nil))
+(def ^:dynamic *realize-on-print*
+  "Set to false to avoid realizing lazy sequences."
+  true)
+
+(defn- may-print? [s]
+  (or *realize-on-print* (not (instance? clojure.lang.IPending s)) (realized? s)))
 
 (defn- elide-vs [vs print-length]
-  (if-some [more-vs (when print-length (seq (drop print-length vs)))]
-    (concat (take print-length vs) [(tagged-literal 'unrepl/... (*elide* more-vs))])
-    vs))
+  (loop [firsts [] vs vs]
+    (if (< (count firsts) print-length)
+      (if (may-print? vs)
+        (recur (conj firsts (first vs)) (rest vs))
+        (conj firsts (tagged-literal 'unrepl/... (*elide* vs))))
+      (if (and (may-print? vs) (empty? vs))
+        firsts
+        (conj firsts (tagged-literal 'unrepl/... (*elide* vs)))))))
 
 (defn- elide-kvs [kvs print-length]
   (if-some [more-kvs (when print-length (seq (drop print-length kvs)))]

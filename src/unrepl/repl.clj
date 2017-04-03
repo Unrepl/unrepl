@@ -22,11 +22,20 @@
   ([tag group-id write]
     (tagging-writer (fn [s] (write [tag s group-id])))))
 
+(defn blame-ex [phase ex]
+  (if (::phase (ex-data ex))
+    ex
+    (ex-info (str "Exception during " (name phase) " phase.")
+      {::ex ex ::phase phase} ex)))
+
+(defmacro blame [phase & body]
+  `(try ~@body
+     (catch Throwable t#
+       (throw (blame-ex ~phase t#)))))
+
 (defn atomic-write [^java.io.Writer w]
   (fn [x]
-    (let [s (try (p/edn-str x) ; was pr-str, must occur outside of the locking form to avoid deadlocks
-              (catch Throwable t
-                (throw (ex-info "Exception while printing." {::ex t ::phase :print} t))))]
+    (let [s (blame :print (p/edn-str x))] ; was pr-str, must occur outside of the locking form to avoid deadlocks
       (locking w
         (.write w s)
         (.write w "\n")
@@ -68,7 +77,8 @@
               (swap! ids-to-weakrefs assoc id wref)
               {:get (make-action id)}))
      :get (fn [id]
-            (or (some-> @ids-to-weakrefs ^java.lang.ref.WeakReference (get id) .get)
+            (if-some [xs (some-> @ids-to-weakrefs ^java.lang.ref.WeakReference (get id) .get)]
+              (seq xs)
               not-found))}))
 
 (defn- base64-str [^java.io.InputStream in]
@@ -164,31 +174,31 @@
           interruptible-eval
           (fn [form]
             (try
-              (let [p (promise)
-                   f
-                   (future
-                     (swap! session-state update :current-eval
-                       assoc :thread (Thread/currentThread))
-                     (try
-                       (write [:started-eval
-                               {:actions 
-                                {:interrupt (list `interrupt! session-id @eval-id)
-                                 :background (list `background! session-id @eval-id)}}
-                               @eval-id])
-                       (let [v (with-bindings {in-eval true}
-                                 (try
-                                   (eval form)
-                                   (catch Throwable t
-                                     (throw (ex-info "Exception during evaluation" {::ex t ::phase :eval} t)))))]
-                         (deliver p {:eval v :bindings (get-thread-bindings)})
-                         v)
-                       (catch Throwable t
-                         (deliver p {:ex t :bindings (get-thread-bindings)})
-                         (throw t))))]
+              (let [original-bindings (get-thread-bindings)
+                    p (promise)
+                    f
+                    (future
+                      (swap! session-state update :current-eval
+                        assoc :thread (Thread/currentThread))
+                      (with-bindings original-bindings
+                        (try
+                          (write [:started-eval
+                                  {:actions 
+                                   {:interrupt (list `interrupt! session-id @eval-id)
+                                    :background (list `background! session-id @eval-id)}}
+                                  @eval-id])
+                          (let [v (with-bindings {in-eval true}
+                                    (blame :eval (eval form)))]
+                            (deliver p {:eval v :bindings (get-thread-bindings)})
+                            v)
+                          (catch Throwable t
+                            (deliver p {:ex t :bindings (get-thread-bindings)})
+                            (throw t)))))]
                 (swap! session-state update :current-eval
                   into {:eval-id @eval-id :promise p :future f})
                 (let [{:keys [ex eval bindings]} @p]
-                  (doseq [[var val] bindings]
+                  (doseq [[var val] bindings
+                          :when (not (identical? val (original-bindings var)))]
                     (var-set var val))
                   (if ex
                     (throw ex)
@@ -212,10 +222,7 @@
                                                [(symbol (name (ns-name (:ns m))) (name (:name m))) @v])))
                                       (:prompt-vars @session-state))]))
           :read (fn [request-prompt request-exit]
-                  (try
-                    (m/repl-read request-prompt request-exit)
-                    (catch Throwable t
-                      (throw (ex-info "Exception while reading" {::ex t ::phase :read} t)))))
+                  (blame :read (m/repl-read request-prompt request-exit)))
           :eval (fn [form]
                   (let [id (var-set eval-id (inc @eval-id))]
                     (binding [*err* (tagging-writer :err id write)
