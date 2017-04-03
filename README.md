@@ -75,6 +75,7 @@ Eight core tags are defined: `:unrepl/hello`, `:bye`, `:prompt`, `:started-eval`
 |`:eval`|The evaluation result|
 |`:out`|A string|
 |`:err`|A string|
+|`:log`|A log vector|
 |`:exception`|A map|
 
 Messages not understood by a client should be ignored.
@@ -127,8 +128,17 @@ The payload is a map with a required key `:ex` which maps to the exception and a
  * `:unknown` (default) no indication on the source of the exception,
  * `:read`, the exception occured during `read` and is more likely a syntax error (may be an IO or any exception when `*read-eval*` is used),
  * `:eval`, the exception occured during `eval`
- * `:eval`, the exception occured during `print`
+ * `:print`, the exception occured during `print`
  * `:repl`, the exception occured in the repl code itself, fill an issue.
+
+### `:log`
+
+```clj
+(spec/def :unrepl/log-msg
+  (spec/cat :level keyword? :key string? :inst inst? :args (spec/* any?)))
+```
+
+The arguments will be machine-printed and as such could be elided.
 
 ### Machine printing
 Pretty printing is meant for humans and should be performed on the client.
@@ -256,6 +266,28 @@ In `:on` mode, a message looks like:
 ```
 
 In `:full` mode an additional `:text` key is present containing the actual input (as a string).
+
+##### `:log-eval`
+
+Parameters:
+
+```clj
+(spec/def :unrepl/log-level keyword?) ; default :all, use :none to disable
+(spec/def :unrepl/log-key string?) ; default ""
+```
+
+Redirect all log messages (with matching levels and keys) triggered by an evaluated form (dynamic scope) to this repl.
+
+#### `:tail-log`
+
+Parameters:
+
+```clj
+(spec/def :unrepl/log-level keyword?) ; default :all, use :none to disable
+(spec/def :unrepl/log-key string?) ; default ""
+```
+
+Redirect all log messages (with matching levels and keys) to this repl.
 
 #### Eval actions
 (Advertised in `:started-eval` messages.)
