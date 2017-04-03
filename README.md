@@ -218,7 +218,7 @@ Some values may print to `#unrepl/mime m` where m is a map with keys: `:content-
 
 ### Message Templates
 
-A message template is an executable description of the expected message. It's a parametrized edn form: all keywords (save those tagged by `#unrepl/quote` are to be substituted by their value. The resulting form is serialized as edn and sent to a repl.
+A message template is an executable description of the expected message. It's a parametrized edn form: all keywords tagged by `#unrepl/param` are to be substituted by their value. The resulting form is serialized as edn and sent to a repl.
 
 ### Actions
 
