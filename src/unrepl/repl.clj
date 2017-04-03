@@ -48,11 +48,22 @@
       ([cbuf] (before-read) (.read r cbuf))
       ([cbuf off len] (before-read) (.read r cbuf off len)))))
 
+(defn- close-socket! [x]
+  ; hacky way because the socket is not exposed by clojure.core.server
+  (loop [x x]
+    (if (= "java.net.SocketInputStream" (.getName (class x)))
+      (do (.close x) true)
+      (when-some [^java.lang.reflect.Field field 
+                  (->> x class (iterate #(.getSuperclass %)) (take-while identity)
+                    (mapcat #(.getDeclaredFields %))
+                    (some #(when (#{"in" "sd"} (.getName ^java.lang.reflect.Field %)) %)))]
+        (recur (.get (doto field (.setAccessible true)) x))))))
+
 (def commands {'set-file-line-col (let [field (when-some [^java.lang.reflect.Field field 
                                                           (->> clojure.lang.LineNumberingPushbackReader
                                                                   .getDeclaredFields
                                                                   (some #(when (= "_columnNumber" (.getName ^java.lang.reflect.Field %)) %)))]
-                                                (.setAccessible field true))] ; sigh
+                                                (doto field (.setAccessible true)))] ; sigh
                                     (fn [file line col]
                                       (set! *file* file)
                                       (set! *source-path* file)
@@ -134,6 +145,9 @@
           {:eval future
            :bindings {}})))))
 
+(defn exit! [session]
+  (some-> @sessions (get session) deref :in close-socket!))
+
 (defn start []
   ; TODO: tighten by removing the dep on m/repl
   (with-local-vars [in-eval false
@@ -142,7 +156,7 @@
                     prompt-vars #{#'*ns* #'*warn-on-reflection*}
                     current-eval-future nil]
     (let [session-id (keyword (gensym "session"))
-          session-state (atom {:current-eval {}})
+          session-state (atom {:current-eval {} :in *in*})
           current-eval-thread+promise (atom nil)
           raw-out *out*
           write (atomic-write raw-out)
@@ -155,15 +169,15 @@
                             (binding [*print-length* Long/MAX_VALUE
                                       *print-level* Long/MAX_VALUE]
                               (write [:unrepl/hello {:session session-id
-                                                     :actions {} #_{:exit (tagged-literal 'unrepl/raw CTRL-D)
-                                                                   :set-source
-                                                                   (tagged-literal 'unrepl/raw
-                                                                     [CTRL-P
-                                                                      (tagged-literal 'unrepl/edn 
-                                                                        (list 'set-file-line-col
-                                                                          (tagged-literal 'unrepl/param :unrepl/sourcename)
-                                                                          (tagged-literal 'unrepl/param :unrepl/line)
-                                                                          (tagged-literal 'unrepl/param :unrepl/column)))])}}]))))
+                                                     :actions {:exit `(exit! ~session-id)
+                                                              #_#_:set-source
+                                                              (tagged-literal 'unrepl/raw
+                                                                [CTRL-P
+                                                                 (tagged-literal 'unrepl/edn 
+                                                                   (list 'set-file-line-col
+                                                                     (tagged-literal 'unrepl/param :unrepl/sourcename)
+                                                                     (tagged-literal 'unrepl/param :unrepl/line)
+                                                                     (tagged-literal 'unrepl/param :unrepl/column)))])}}]))))
           ensure-raw-repl (fn []
                             (when (and @in-eval @unrepl) ; reading from eval!
                               (var-set unrepl false)
