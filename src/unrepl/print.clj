@@ -1,5 +1,6 @@
 (ns unrepl.print
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str]
+    [clojure.edn :as edn]))
 
 (def atomic? (some-fn nil? true? false? char? string? symbol? keyword? #(and (number? %) (not (ratio? %)))))
 
@@ -29,6 +30,9 @@
        ([] (@d#))
        ([x#] (@d# x#))
        ([x# & xs#] (apply @d# x# xs#)))))
+
+(defn- as-inst [x]
+  (edn/read-string {:readers {'inst #(tagged-literal 'inst %)}} (pr-str x)))
 
 (def ^:dynamic *object-representations*
   "map of classes to functions returning their representation component (3rd item in #unrepl/object [class id rep])"
@@ -80,27 +84,23 @@
   (reduce-kv (fn [_ class f]
                (when (instance? class x) (reduced (f x)))) nil *object-representations*)) ; todo : cache
 
-(def ^:dynamic *ednize-fns*
-  "map of classes to function converting to a shallow edn-safe representation"
-  {clojure.lang.TaggedLiteral identity
-   
-   clojure.lang.Ratio (fn [^clojure.lang.Ratio x] (tagged-literal 'unrepl/ratio [(.numerator x) (.denominator x)]))
-   
-   Throwable #(tagged-literal 'error (Throwable->map %))
-   
-   Class
-   (letfn [(class-form [^Class x]
-             (if (.isArray x) [(-> x .getComponentType class-form)] (symbol (.getName x))))]
-     (fn [^Class x] (tagged-literal 'unrepl.java/class (class-form x))))
-   
-   clojure.lang.Namespace #(tagged-literal 'unrepl/ns (ns-name %))
-   
-   java.util.regex.Pattern #(tagged-literal 'unrepl/pattern (str %))
-   
-   Object
-   (fn [x]
-     (tagged-literal 'unrepl/object
-       [(class x) (format "0x%x" (System/identityHashCode x)) (object-representation x)]))})
+(defmulti default-ednize-fn class)
+(defmethod default-ednize-fn clojure.lang.TaggedLiteral [x] x)
+(defmethod default-ednize-fn clojure.lang.Ratio [^clojure.lang.Ratio x] (tagged-literal 'unrepl/ratio [(.numerator x) (.denominator x)]))
+(defmethod default-ednize-fn Throwable [t] (tagged-literal 'error (Throwable->map t)))
+(defn- class-form [^Class x]
+  (if (.isArray x) [(-> x .getComponentType class-form)] (symbol (.getName x))))
+(defmethod default-ednize-fn Class [x] (tagged-literal 'unrepl.java/class (class-form x)))
+(defmethod default-ednize-fn java.util.Date [x] (as-inst x))
+(defmethod default-ednize-fn java.util.Calendar [x] (as-inst x))
+(defmethod default-ednize-fn java.sql.Timestamp [x] (as-inst x))
+(defmethod default-ednize-fn clojure.lang.Namespace [x] (tagged-literal 'unrepl/ns (ns-name x)))
+(defmethod default-ednize-fn java.util.regex.Pattern [x] (tagged-literal 'unrepl/pattern (str x)))
+(defmethod default-ednize-fn Object [x]
+  (tagged-literal 'unrepl/object
+    [(class x) (format "0x%x" (System/identityHashCode x)) (object-representation x)]))
+
+(def ^:dynamic *ednize* default-ednize-fn)
 
 (def ^:dynamic *elide* (constantly nil))
 (def ^:dynamic *realize-on-print*
@@ -144,11 +144,10 @@
     (vector? x) (into (empty x) (elide-vs x print-length))
     (seq? x) (elide-vs x print-length)
     (set? x) (into (empty x) (elide-vs x print-length))
-    :else (let [x' (reduce-kv (fn [_ class f]
-                                (when (instance? class x) (reduced (f x)))) nil *ednize-fns*)]
+    :else (let [x' (*ednize* x)]
             (if (= x x')
               x
-              (recur x'  print-length print-meta)))))) ; todo : cache
+              (recur x' print-length print-meta)))))) ; todo : cache
 
 (declare print-on)
 
