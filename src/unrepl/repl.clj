@@ -273,7 +273,9 @@
                                      r (m/repl-read request-prompt request-exit)
                                      line+col' [(.getLineNumber *in*) (.getColumnNumber *in*)]]
                                  (or (#{request-prompt request-exit} r)
-                                   (write [:echo {:from line+col :to line+col'} (var-set eval-id (inc @eval-id))])))))
+                                   (do
+                                     (write [:echo {:from line+col :to line+col'} (var-set eval-id (inc @eval-id))])
+                                     r)))))
           :eval (fn [form]
                   (let [id @eval-id]
                     (binding [*err* (tagging-writer :err id write)
