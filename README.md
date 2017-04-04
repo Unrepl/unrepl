@@ -241,7 +241,7 @@ Three parameters:
 (spec/def :unrepl/column integer?)
 ```
 
-Sets the filename, line and column numbers for subsequent evaluations. The reader will update the line and column numbers as it reads more input. 
+Sets the filename, line and column numbers for subsequent evaluations. The change will take effect at next prompt display.
 
 ##### `:unrepl.jvm/start-side-loader`
 
@@ -277,27 +277,15 @@ In `:on` mode, a message looks like:
 
 In `:full` mode an additional `:text` key is present containing the actual input (as a string).
 
-##### `:log-eval`
+##### `:log-eval` and `:log-all`
 
-Parameters:
+No parameters.
 
-```clj
-(spec/def :unrepl/log-level keyword?) ; default :all, use :none to disable
-(spec/def :unrepl/log-key string?) ; default ""
-```
+`:log-eval` returns a function of one argument (`msg` conforming to `:unrepl/log-msg`) that will print `[:log msg group-id]` only when called (directly or not) from evaluated code.
 
-Redirect all log messages (with matching levels and keys) triggered by an evaluated form (dynamic scope) to this repl.
+`:log-all` returns a function of one argument (`msg` conforming to `:unrepl/log-msg`) that will print `[:log msg nil]`.
 
-#### `:tail-log`
-
-Parameters:
-
-```clj
-(spec/def :unrepl/log-level keyword?) ; default :all, use :none to disable
-(spec/def :unrepl/log-key string?) ; default ""
-```
-
-Redirect all log messages (with matching levels and keys) to this repl.
+Client software should use these values to hook up appenders for the user log facilities.
 
 #### Eval actions
 (Advertised in `:started-eval` messages.)

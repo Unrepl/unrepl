@@ -59,17 +59,6 @@
                     (some #(when (#{"in" "sd"} (.getName ^java.lang.reflect.Field %)) %)))]
         (recur (.get (doto field (.setAccessible true)) x))))))
 
-(def commands {'set-file-line-col (let [field (when-some [^java.lang.reflect.Field field 
-                                                          (->> clojure.lang.LineNumberingPushbackReader
-                                                                  .getDeclaredFields
-                                                                  (some #(when (= "_columnNumber" (.getName ^java.lang.reflect.Field %)) %)))]
-                                                (doto field (.setAccessible true)))] ; sigh
-                                    (fn [file line col]
-                                      (set! *file* file)
-                                      (set! *source-path* file)
-                                      (.setLineNumber *in* line)
-                                      (some-> field (.set *in* col))))})
-
 (defn weak-store [make-action not-found]
   (let [ids-to-weakrefs (atom {})
         weakrefs-to-ids (atom {})
@@ -124,9 +113,12 @@
 (defonce ^:private attachment-store (weak-store #(list `download %) (constantly nil)))
 (defn download [id] ((:get attachment-store) id))
 
-(defn interrupt! [session eval]
+(defn session [id]
+  (some-> @sessions (get id) deref))
+
+(defn interrupt! [session-id eval]
   (let [{:keys [^Thread thread eval-id promise]}
-        (some-> @sessions (get session) deref :current-eval)]
+        (some-> session-id session :current-eval)]
     (when (and (= eval eval-id)
             (deliver promise
               {:ex (doto (ex-info "Evaluation interrupted" {::phase :eval})
@@ -135,9 +127,9 @@
       (.stop thread)
       true)))
 
-(defn background! [session eval]
+(defn background! [session-id eval]
   (let [{:keys [eval-id promise future]}
-        (some-> @sessions (get session) deref :current-eval)]
+        (some-> session-id session :current-eval)]
     (boolean
       (and
         (= eval eval-id)
@@ -145,8 +137,33 @@
           {:eval future
            :bindings {}})))))
 
-(defn exit! [session]
-  (some-> @sessions (get session) deref :in close-socket!))
+(defn exit! [session-id]
+  (some-> session-id session :in close-socket!))
+
+(defn set-file-line-col [session-id file line col]
+  (when-some [^java.lang.reflect.Field field 
+              (->> clojure.lang.LineNumberingPushbackReader
+                .getDeclaredFields
+                (some #(when (= "_columnNumber" (.getName ^java.lang.reflect.Field %)) %)))]
+    (doto field (.setAccessible true)) ; sigh
+    (some-> session-id session :pre-prompt
+      (.put (fn []
+              (set! *file* file)
+              (set! *source-path* file)
+              (.setLineNumber *in* line)
+              (.set field *in* (int col)))))))
+
+(def commands {'set-file-line-col (let [field (when-some [^java.lang.reflect.Field field 
+                                                          (->> clojure.lang.LineNumberingPushbackReader
+                                                                  .getDeclaredFields
+                                                                  (some #(when (= "_columnNumber" (.getName ^java.lang.reflect.Field %)) %)))]
+                                                (doto field (.setAccessible true)))] ; sigh
+                                    (fn [file line col]
+                                      (set! *file* file)
+                                      (set! *source-path* file)
+                                      (.setLineNumber *in* line)
+                                      (some-> field (.set *in* col))))})
+
 
 (defn start []
   ; TODO: tighten by removing the dep on m/repl
@@ -156,11 +173,18 @@
                     prompt-vars #{#'*ns* #'*warn-on-reflection*}
                     current-eval-future nil]
     (let [session-id (keyword (gensym "session"))
-          session-state (atom {:current-eval {} :in *in*})
-          current-eval-thread+promise (atom nil)
           raw-out *out*
           write (atomic-write raw-out)
           edn-out (tagging-writer :out write)
+          session-state (atom {:current-eval {} :in *in*
+                               :pre-prompt (java.util.concurrent.LinkedBlockingQueue.)
+                               :log-eval (fn [msg]
+                                           (when (bound? eval-id)
+                                             (write [:log msg @eval-id])))
+                               :log-all (fn [msg]
+                                          (write [:log msg nil]))
+                               :prompt-vars #{#'*ns* #'*warn-on-reflection*}})
+          current-eval-thread+promise (atom nil)
           ensure-unrepl (fn []
                           (when-not @unrepl
                             (var-set unrepl true)
@@ -170,14 +194,15 @@
                                       *print-level* Long/MAX_VALUE]
                               (write [:unrepl/hello {:session session-id
                                                      :actions {:exit `(exit! ~session-id)
-                                                              #_#_:set-source
-                                                              (tagged-literal 'unrepl/raw
-                                                                [CTRL-P
-                                                                 (tagged-literal 'unrepl/edn 
-                                                                   (list 'set-file-line-col
-                                                                     (tagged-literal 'unrepl/param :unrepl/sourcename)
-                                                                     (tagged-literal 'unrepl/param :unrepl/line)
-                                                                     (tagged-literal 'unrepl/param :unrepl/column)))])}}]))))
+                                                               :log-eval
+                                                               `(some-> ~session-id session :log-eval)
+                                                               :log-all
+                                                               `(some-> ~session-id session :log-all)
+                                                               :set-source
+                                                               `(set-file-line-col ~session-id
+                                                                  ~(tagged-literal 'unrepl/param :unrepl/sourcename)
+                                                                  ~(tagged-literal 'unrepl/param :unrepl/line)
+                                                                  ~(tagged-literal 'unrepl/param :unrepl/column))}}]))))
           ensure-raw-repl (fn []
                             (when (and @in-eval @unrepl) ; reading from eval!
                               (var-set unrepl false)
@@ -230,15 +255,27 @@
         (m/repl
           :prompt (fn []
                     (ensure-unrepl)
-                    (write [:prompt (into {}
+                    (let [q (:pre-prompt @session-state)]
+                      (loop [exs []]
+                        (if-some [f (.poll q)]
+                          (recur (try (f) exs
+                                   (catch Throwable t (conj exs t))))
+                          (when (seq exs)
+                            (throw (ex-info "Errors happened during pre-prompt." {:exs exs}))))))
+                    (write [:prompt (into {:file *file*
+                                           :line (.getLineNumber *in*)}
                                       (map (fn [v]
                                              (let [m (meta v)]
                                                [(symbol (name (ns-name (:ns m))) (name (:name m))) @v])))
                                       (:prompt-vars @session-state))]))
           :read (fn [request-prompt request-exit]
-                  (blame :read (m/repl-read request-prompt request-exit)))
+                  (blame :read (let [line+col [(.getLineNumber *in*) (.getColumnNumber *in*)]
+                                     r (m/repl-read request-prompt request-exit)
+                                     line+col' [(.getLineNumber *in*) (.getColumnNumber *in*)]]
+                                 (or (#{request-prompt request-exit} r)
+                                   (write [:echo {:from line+col :to line+col'} (var-set eval-id (inc @eval-id))])))))
           :eval (fn [form]
-                  (let [id (var-set eval-id (inc @eval-id))]
+                  (let [id @eval-id]
                     (binding [*err* (tagging-writer :err id write)
                               *out* (tagging-writer :out id write)]
                       (interruptible-eval form))))
