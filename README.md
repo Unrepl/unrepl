@@ -285,7 +285,32 @@ No parameters.
 
 `:log-all` returns a function of one argument (`msg` conforming to `:unrepl/log-msg`) that will print `[:log msg nil]`.
 
-Client software should use these values to hook up appenders for the user log facilities.
+Client software should use these values to hook up appenders for the user log facilities. For example, assuming `Timbre` as the logging library and a value of `(clojure.core/some-> :session329  unrepl.repl/session :log-eval)]` for `:log-eval` then the client can send this form to the repl (main or control):
+
+```clj
+(let [w (clojure.core/some-> :session329  unrepl.repl/session :log-eval)]
+  (timbre/merge-config!
+    {:appenders
+     {:println {:enabled? false} ; disabled because it tries to force print lazyseqs
+      :unrepl
+      {:enabled? true
+       :fn (fn [{:keys [level instant ?ns-str vargs]}]
+             (w (into [level ?ns-str instant] vargs)))}}}))
+```
+
+(Namespaces have been omitted or aliased, however this form should be built using syntax-quote to ensure proper qualification of symbols.)
+
+Once the above expression evaluated, we have the following interactions:
+
+```clj
+(timbre/log :info "a" (range))
+[:echo {:from [14 1], :to [15 1]} 12]
+[:started-eval {:actions {:interrupt (unrepl.repl/interrupt! :session329 12), :background (unrepl.repl/background! :session329 12)}} 12]
+[:log [:info "user" #inst "2017-04-04T14:56:56.574-00:00" "a" (0 1 2 3 4 5 6 7 8 9 #unrepl/... {:get (unrepl.repl/fetch :G__3948)})] 12]
+[:eval nil 12]
+```
+
+Hence a client UI can render log messages as navigable.
 
 #### Eval actions
 (Advertised in `:started-eval` messages.)
