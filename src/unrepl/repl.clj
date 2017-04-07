@@ -62,23 +62,24 @@
 (defn weak-store [make-action not-found]
   (let [ids-to-weakrefs (atom {})
         weakrefs-to-ids (atom {})
-        refq (java.lang.ref.ReferenceQueue.)]
+        refq (java.lang.ref.ReferenceQueue.)
+        NULL (Object.)]
     (.start (Thread. (fn []
                        (let [wref (.remove refq)]
                          (let [id (@weakrefs-to-ids wref)]
                            (swap! weakrefs-to-ids dissoc wref)
                            (swap! ids-to-weakrefs dissoc id)))
                            (recur))))
-    {:put (fn [xs]
-            (let [x (if (nil? xs) () xs)
+    {:put (fn [x]
+            (let [x (if (nil? x) NULL x)
                   id (keyword (gensym))
-                  wref (java.lang.ref.WeakReference. xs refq)]
+                  wref (java.lang.ref.WeakReference. x refq)]
               (swap! weakrefs-to-ids assoc wref id)
               (swap! ids-to-weakrefs assoc id wref)
               {:get (make-action id)}))
      :get (fn [id]
-            (if-some [xs (some-> @ids-to-weakrefs ^java.lang.ref.WeakReference (get id) .get)]
-              (seq xs)
+            (if-some [x (some-> @ids-to-weakrefs ^java.lang.ref.WeakReference (get id) .get)]
+              (if (= NULL x) nil x)
               not-found))}))
 
 (defn- base64-str [^java.io.InputStream in]

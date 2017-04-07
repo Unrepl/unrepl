@@ -115,6 +115,10 @@
 (defn- may-print? [s]
   (or *realize-on-print* (not (instance? clojure.lang.IPending s)) (realized? s)))
 
+(deftype ElidedKVs [s]
+  clojure.lang.Seqable
+  (seq [_] (seq s)))
+
 (defn- elide-vs [vs print-length]
   (cond
     (pos? print-length)
@@ -129,7 +133,7 @@
 
 (defn- elide-kvs [kvs print-length]
   (if-some [more-kvs (when print-length (seq (drop print-length kvs)))]
-    (concat (take print-length kvs) [[(tagged-literal 'unrepl/... (*elide* more-kvs)) (tagged-literal 'unrepl/... nil)]])
+    (concat (take print-length kvs) [[(tagged-literal 'unrepl/... (*elide* (ElidedKVs. more-kvs))) (tagged-literal 'unrepl/... nil)]])
     kvs))
 
 (defn ednize "Shallow conversion to edn safe subset." 
@@ -139,11 +143,12 @@
   (cond
     (atomic? x) x
     (and print-meta (meta x)) (tagged-literal 'unrepl/meta [(meta x) (ednize x print-length false)])
-    (map? x) (into (empty x) (elide-kvs x print-length))
+    (map? x) (into {} (elide-kvs x print-length))
+    (instance? ElidedKVs x) (ElidedKVs. (elide-kvs x print-length))
     (instance? clojure.lang.MapEntry x) x
     (vector? x) (into (empty x) (elide-vs x print-length))
     (seq? x) (elide-vs x print-length)
-    (set? x) (into (empty x) (elide-vs x print-length))
+    (set? x) (into #{} (elide-vs x print-length))
     :else (let [x' (*ednize* x)]
             (if (= x x')
               x
@@ -173,14 +178,14 @@
   (let [rem-depth (dec rem-depth)
         x (ednize x (if (neg? rem-depth) 0 *print-length*))]
     (cond
-      (tagged-literal? x) 
+      (tagged-literal? x)
       (do (write (str "#" (:tag x) " "))
         (case (:tag x)
           unrepl/... (binding ; don't elide the elision 
                        [*print-length* Long/MAX_VALUE]
                        (print-on write (:form x) Long/MAX_VALUE))
           (recur write (:form x) rem-depth)))
-      (map? x) (do (write "{") (print-kvs write x rem-depth) (write "}"))
+      (or (map? x) (instance? ElidedKVs x)) (do (write "{") (print-kvs write x rem-depth) (write "}"))
       (vector? x) (do (write "[") (print-vs write x rem-depth) (write "]"))
       (seq? x) (do (write "(") (print-vs write x rem-depth) (write ")"))
       (set? x) (do (write "#{") (print-vs write x rem-depth) (write "}"))
