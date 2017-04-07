@@ -41,6 +41,16 @@
         (.write w "\n")
         (.flush w)))))
 
+(defn fuse-write [awrite]
+  (fn [x]
+    (when-some [w @awrite]
+      (try
+        (w x)
+        (catch Throwable t
+          (reset! awrite nil))))))
+
+(def ^:dynamic write)
+
 (defn pre-reader [^java.io.Reader r before-read]
   (proxy [java.io.FilterReader] [r]
     (read 
@@ -108,8 +118,14 @@
 
 (defonce ^:private sessions (atom {}))
 
-(defonce ^:private elision-store (weak-store #(list `fetch %) (tagged-literal 'unrepl/... nil)))
-(defn fetch [id] ((:get elision-store) id))
+(def ^:private unreachable (tagged-literal 'unrepl/... nil))
+(defonce ^:private elision-store (weak-store #(list `fetch %) unreachable))
+(defn fetch [id] 
+  (let [x ((:get elision-store) id)]
+    (cond
+      (= unreachable x) x
+      (instance? unrepl.print.ElidedKVs x) x
+      :else (seq x))))
 
 (defonce ^:private attachment-store (weak-store #(list `download %) (constantly nil)))
 (defn download [id] ((:get attachment-store) id))
@@ -138,8 +154,19 @@
           {:eval future
            :bindings {}})))))
 
-(defn exit! [session-id]
+(defn exit! [session-id] ; too violent
   (some-> session-id session :in close-socket!))
+
+(defn reattach-outs! [session-id]
+  (some-> session-id session :write-atom 
+    (reset!
+      (if (bound? #'write)
+        write
+        (let [out *out*]
+          (fn [x]
+            (binding [*out* out
+                      *print-readably* true]
+              (prn x))))))))
 
 (defn set-file-line-col [session-id file line col]
   (when-some [^java.lang.reflect.Field field 
@@ -154,20 +181,7 @@
               (.setLineNumber *in* line)
               (.set field *in* (int col)))))))
 
-(def commands {'set-file-line-col (let [field (when-some [^java.lang.reflect.Field field 
-                                                          (->> clojure.lang.LineNumberingPushbackReader
-                                                                  .getDeclaredFields
-                                                                  (some #(when (= "_columnNumber" (.getName ^java.lang.reflect.Field %)) %)))]
-                                                (doto field (.setAccessible true)))] ; sigh
-                                    (fn [file line col]
-                                      (set! *file* file)
-                                      (set! *source-path* file)
-                                      (.setLineNumber *in* line)
-                                      (some-> field (.set *in* col))))})
-
-
 (defn start []
-  ; TODO: tighten by removing the dep on m/repl
   (with-local-vars [in-eval false
                     unrepl false
                     eval-id 0
@@ -175,9 +189,11 @@
                     current-eval-future nil]
     (let [session-id (keyword (gensym "session"))
           raw-out *out*
-          write (atomic-write raw-out)
-          edn-out (tagging-writer :out write)
+          aw (atom (atomic-write raw-out))
+          write-here (fuse-write aw)
+          edn-out (tagging-writer :out write-here)
           session-state (atom {:current-eval {} :in *in*
+                               :write-atom aw
                                :pre-prompt (java.util.concurrent.LinkedBlockingQueue.)
                                :log-eval (fn [msg]
                                            (when (bound? eval-id)
@@ -207,8 +223,9 @@
           ensure-raw-repl (fn []
                             (when (and @in-eval @unrepl) ; reading from eval!
                               (var-set unrepl false)
-                              (write [:bye nil])
+                              (write [:bye {:reason :upgrade :actions {}}])
                               (flush)
+                              ; (reset! aw (blocking-write))
                               (set! *out* raw-out)))
           
           interruptible-eval
@@ -252,7 +269,8 @@
                 *file* "unrepl-session"
                 *source-path* "unrepl-session"
                 p/*elide* (:put elision-store)
-                p/*attach* (:put attachment-store)]
+                p/*attach* (:put attachment-store)
+                write write-here]
         (m/repl
           :prompt (fn []
                     (ensure-unrepl)
@@ -289,5 +307,7 @@
                     (ensure-unrepl)
                     (let [{:keys [::ex ::phase]
                            :or {ex e phase :repl}} (ex-data e)]
-                      (write [:exception {:ex e :phase phase} @eval-id]))))))))
-
+                      (write [:exception {:ex e :phase phase} @eval-id]))))
+        (write [:bye {:reason :disconnection
+                      :outs :muted
+                      :actions {:reattach-outs `(reattach-outs! ~session-id)}}])))))

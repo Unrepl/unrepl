@@ -98,6 +98,23 @@ The `:bye` message must be the last unrepl message before yielding control of th
 
 Implementation note: this can be detected when the expression being evaluated tries to read from the input. When evaluation returns, the unrepl impl can reassume control of the input and output stream. If it does so, its first message must be a `:unrepl/hello`.
 
+Its payload is a map.
+
+```clj
+(spec/def :unrepl/bye-payload
+  (spec/keys :opt-un [:unrepl.bye/reason :unrepl.bye/outs :unrepl/actions]))
+
+(spec/def :unrepl.bye/reason #{:disconnection :upgrade})
+
+;; describes what happen to background outputs after the `:bye` message: 
+(spec/def :unrepl.bye/outs
+  #{:muted ; they are muted (think `/dev/null`) 
+    :blocked ; writing threads are blocked
+    :closed ; they are closed (unless handled, the IO exception kills the writer)
+    :cobbled}) ; everything is cobbled together (like with a plain repl) 
+```
+
+
 Example:
 
 ```clj
@@ -328,7 +345,16 @@ Upon completion of the future a `[:bg-eval value id]` is sent (on the main repl)
 #### Bye actions
 (Advertised in `:bye` messages.)
 
+##### `:reattach-outs`
+
+No parameter.
+
+Redirects all outs to the repl (unrepl or not) in which the action has been issued. 
+
 ##### `:set-mute-mode`
+
+__DEPRECATED__
+
 By default all spurious output is blocked after a `:bye` message.
 
 Parameter:
