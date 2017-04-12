@@ -80,12 +80,14 @@
     {:input (writer transport close write)
      :output (reader transport close flush)}))
 
-(comment
-  ; the following example upgrades the running repl to mirror the replized nrepl :-)
-  (let [{:keys [output input]} (repl :port 62005)
-        cbuf (char-array 1024)
+(defn mirror
+  "Upgrades the running repl to mirror the repl connected to the two streams.
+   :input is the input of the \"distant\" repl, so is a Writer.
+   :output is the output of the \"distant\" repl, so is a Reader."
+  [{:keys [input output]}]
+  (let [cbuf (char-array 1024)
         cbuf' (char-array 1024)]
-    (future
+    (future ; printing thread
       (loop []
         (let [n (.read output cbuf)]
           (when-not (neg? n)
@@ -93,8 +95,12 @@
               (.write cbuf 0 n)
               (.flush))
             (recur)))))
-    (loop []
+    (loop [] ; main is reading
       (let [n (.read *in* cbuf')]
         (when-not (neg? n)
           (.write input cbuf' 0 n)
           (recur))))))
+
+(comment
+  ; the following example upgrades the running repl to mirror a replized nrepl :-)
+  (mirror (repl :port 62005)))
