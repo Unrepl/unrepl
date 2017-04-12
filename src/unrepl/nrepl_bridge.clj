@@ -5,7 +5,6 @@
 
 (defn writer [transport session]
   (let [write (fn [s] 
-                (binding [*out* *err*] (prn '> s))
                 (t/send transport {:op :stdin :stdin s :id (uuid) :session session}))]
     (proxy [java.io.Writer] []
       (close [] (t/send transport {:op :close :id (uuid) :session session}))
@@ -26,7 +25,7 @@
         wait-ready (fn []
                      (when-some [msg (t/recv transport)]
                        (if-some [s (or (:out msg) (:err msg))]
-                         (vreset! vr (java.io.StringReader. (doto s (->> (prn '<)))))
+                         (vreset! vr (java.io.StringReader. s))
                          (if (some #{"session-closed"} (:status msg))
                            (do
                              (.close transport)
