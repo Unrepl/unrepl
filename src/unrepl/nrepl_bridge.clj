@@ -3,36 +3,37 @@
     [clojure.tools.nrepl.transport :as t])
   (:use [clojure.tools.nrepl.misc :only (uuid)]))
 
-(defn writer [transport session]
-  (let [write (fn [s] 
-                (t/send transport {:op :stdin :stdin s :id (uuid) :session session}))]
-    (proxy [java.io.Writer] []
-      (close [] (t/send transport {:op :close :id (uuid) :session session}))
-      (flush [])
-      (write
-        ([x]
-          (write (cond 
-                   (string? x) x
-                   (integer? x) (str (char x))
-                   :else (String. ^chars x))))
-        ([string-or-chars off len]
-          (when (pos? len)
-            (write (subs (if (string? string-or-chars) string-or-chars (String. ^chars string-or-chars))
-                     off (+ off len)))))))))
+(defn writer [transport close write]
+  (proxy [java.io.Writer] []
+    (close [] (close))
+    (flush [])
+    (write
+      ([x]
+        (write (cond 
+                 (string? x) x
+                 (integer? x) (str (char x))
+                 :else (String. ^chars x))))
+      ([string-or-chars off len]
+        (when (pos? len)
+          (write (subs (if (string? string-or-chars) string-or-chars (String. ^chars string-or-chars))
+                   off (+ off len))))))))
 
-(defn reader [transport session]
+(defn reader [transport close flush]
   (let [vr (volatile! (java.io.StringReader. ""))
         wait-ready (fn []
-                     (when-some [msg (t/recv transport)]
+                     (when-some [msg (t/recv transport Long/MAX_VALUE)]
                        (if-some [s (or (:out msg) (:err msg))]
                          (vreset! vr (java.io.StringReader. s))
                          (if (some #{"session-closed"} (:status msg))
                            (do
                              (.close transport)
                              (vreset! vr nil))
-                           (recur)))))]
+                           (do
+                             (when (some #{"need-input"} (:status msg))
+                               (flush)
+                               (recur)))))))]
     (proxy [java.io.Reader] []
-      (close [] (t/send transport {:op :close :id (uuid) :session session}))
+      (close [] (close))
       (read
         ([] (if-some [^java.io.Reader r @vr]
               (let [c (.read r)]
@@ -63,7 +64,32 @@
    Takes the same arguments as nrepl/connect."
   [& args]
   (let [transport (apply nrepl/connect args)
-        session (-> transport (t/send {:op :clone :id (uuid)}) t/recv :new-session)]
+        session (-> transport (t/send {:op :clone :id (uuid)}) (t/recv Long/MAX_VALUE) :new-session)
+        close #(t/send transport {:op :close :id (uuid) :session session})
+        q (java.util.concurrent.LinkedBlockingQueue.)
+        write (fn [x] (.put q x))
+        flush (fn []
+                (let [s (loop [sb (StringBuilder. (.take q))]
+                          (if-some [s (.poll q)]
+                            (recur (.append sb s))
+                            (.toString sb)))]
+                  (t/send transport
+                    {:op :stdin :stdin s 
+                     :id (uuid) :session session})))]
     (t/send transport {:op :eval :code "(clojure.main/repl)" :id (uuid) :session session})
-    {:input (writer transport session)
-     :output (reader transport session)}))
+    {:input (writer transport close write)
+     :output (reader transport close flush)}))
+
+(comment
+  ; the following example upgrades the running repl to mirror the replized nrepl :-)
+  (let [{:keys [output input]} (repl :port 59262)]
+    (future
+      (loop []
+        (let [c (.read output)]
+          (when-not (neg? c)
+            (print (char c))
+            (flush)
+            (recur)))))
+    (binding [*out* input]
+      (while true
+        (print (char (.read *in*)))))))
