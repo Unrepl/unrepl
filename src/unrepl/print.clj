@@ -2,6 +2,12 @@
   (:require [clojure.string :as str]
     [clojure.edn :as edn]))
 
+(def ^:dynamic *elide* (constantly nil))
+
+(deftype ElidedKVs [s]
+  clojure.lang.Seqable
+  (seq [_] (seq s)))
+
 (def atomic? (some-fn nil? true? false? char? string? symbol? keyword? #(and (number? %) (not (ratio? %)))))
 
 (defn- as-str
@@ -98,11 +104,11 @@
 (defmethod default-ednize-fn java.util.regex.Pattern [x] (tagged-literal 'unrepl/pattern (str x)))
 (defmethod default-ednize-fn Object [x]
   (tagged-literal 'unrepl/object
-    [(class x) (format "0x%x" (System/identityHashCode x)) (object-representation x)]))
+    [(class x) (format "0x%x" (System/identityHashCode x)) (object-representation x)
+     {:bean {(tagged-literal 'unrepl/... (*elide* (ElidedKVs. (bean x)))) (tagged-literal 'unrepl/... nil)}}]))
 
 (def ^:dynamic *ednize* default-ednize-fn)
 
-(def ^:dynamic *elide* (constantly nil))
 (def ^:dynamic *realize-on-print*
   "Set to false to avoid realizing lazy sequences."
   true)
@@ -114,10 +120,6 @@
 
 (defn- may-print? [s]
   (or *realize-on-print* (not (instance? clojure.lang.IPending s)) (realized? s)))
-
-(deftype ElidedKVs [s]
-  clojure.lang.Seqable
-  (seq [_] (seq s)))
 
 (defn- elide-vs [vs print-length]
   (cond
