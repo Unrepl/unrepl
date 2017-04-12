@@ -82,14 +82,19 @@
 
 (comment
   ; the following example upgrades the running repl to mirror the replized nrepl :-)
-  (let [{:keys [output input]} (repl :port 59262)]
+  (let [{:keys [output input]} (repl :port 62005)
+        cbuf (char-array 1024)
+        cbuf' (char-array 1024)]
     (future
       (loop []
-        (let [c (.read output)]
-          (when-not (neg? c)
-            (print (char c))
-            (flush)
+        (let [n (.read output cbuf)]
+          (when-not (neg? n)
+            (doto *out*
+              (.write cbuf 0 n)
+              (.flush))
             (recur)))))
-    (binding [*out* input]
-      (while true
-        (print (char (.read *in*)))))))
+    (loop []
+      (let [n (.read *in* cbuf')]
+        (when-not (neg? n)
+          (.write input cbuf' 0 n)
+          (recur))))))
