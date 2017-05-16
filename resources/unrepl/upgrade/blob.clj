@@ -12,7 +12,9 @@
                     (do
                       (clojure.core/prn [:unrepl.upgrade/require ns :unrepl.upgrade/end-of-ns])
                       (clojure.core/reset! state :loading))
-                    (clojure.core/reset! state :done))))
+                    (do
+                      (clojure.core/prn [:unrepl.upgrade/success])
+                      (clojure.core/reset! state :done)))))
       :read (clojure.core/fn [request-prompt request-exit]
               (if (clojure.core/= :loading @state)
                 (clojure.core/let [x (clojure.main/repl-read request-prompt request-exit)]
