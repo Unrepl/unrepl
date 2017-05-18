@@ -5,4 +5,5 @@
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.8.0"]
                  [org.clojure/tools.nrepl "0.2.12"]]
-  :profiles {:dev {:dependencies [[com.taoensso/timbre "4.8.0"]]}})
+  :profiles {:dev {:dependencies [[com.taoensso/timbre "4.8.0"]]}}
+  :prep-tasks ["unrepl-make-blob" "javac" "compile"])
