@@ -3,6 +3,7 @@
 
 (defn unrepl-make-blob [project]
   (let [code (str (slurp "src/unrepl/print.clj") (slurp "src/unrepl/repl.clj") "\n(unrepl.repl/start)")]
+    (-> "resources/unrepl" java.io.File. .mkdirs)
     (spit "resources/unrepl/blob.clj"
       (prn-str
         `(let [prefix# (name (gensym))
