@@ -148,7 +148,7 @@ The payload is a map with a required key `:ex` which maps to the exception and a
  * `:print`, the exception occured during `print`
  * `:repl`, the exception occured in the repl code itself, fill an issue.
 
-### `:log`
+#### `:log`
 
 ```clj
 (spec/def :unrepl/log-msg
@@ -156,6 +156,17 @@ The payload is a map with a required key `:ex` which maps to the exception and a
 ```
 
 The arguments will be machine-printed and as such could be elided.
+
+#### `:echo`
+
+Echo is meant to help tools to relate outputs to inputs. It can be especially useful whene several forms are sent in a batch or when syntax errors happen and the reader resumes reading.
+
+```clj
+[:echo {:start [line col] :end [line col] :offset N :len N} 1]
+```
+
+Offset is the number of characters (well UTF-16 code units) from the start of the unrepl session *with line-delimiting sequences normalized to one character* (`\n`) -- so if the client sends a `CRLF` the offset is only increased by 1.
+
 
 ### Machine printing
 Pretty printing is meant for humans and should be performed on the client.
@@ -271,28 +282,6 @@ A sideloading session is a very simple edn-protocol.
 It starts by `[:unrepl.jvm/sideloader]` preamble and a then a serie of request/responses initiatted by the server: the client waits for messages `[:find-resource "resource/name"]` or `[:find-class "some.class.name"]` and replies either `nil` or a base64-encoded string representation of the file.
 
 The only way to terminate a sideloading session is to close the connection.
-
-##### `:echo`
-
-Echo is meant to help tools to relate outputs to inputs. It can be especially useful whene several forms are sent in a batch or when syntax errors happen and the reader resumes reading.
-
-Parameter:
-
-```clj
-(spec/def :unrepl/echo-mode #{:off :on :full})
-```
-
-Returns: true if the desired echo mode has been set, else falsey.
-
-When the echo mode is not `:off`, `:echo` messages are sent before `:started-eval`.
-
-In `:on` mode, a message looks like:
-
-```clj
-[:echo {:file "" :start-line N :end-line N :start-column N :end-column N :offset N :len N} 1]
-```
-
-In `:full` mode an additional `:text` key is present containing the actual input (as a string).
 
 ##### `:log-eval` and `:log-all`
 

@@ -51,12 +51,41 @@
 
 (def ^:dynamic write)
 
-(defn pre-reader [^java.io.Reader r before-read]
-  (proxy [java.io.FilterReader] [r]
+(defn unrepl-reader [^java.io.Reader r before-read counter]
+  (proxy [clojure.lang.LineNumberingPushbackReader] [r]
     (read 
-      ([] (before-read) (.read r))
-      ([cbuf] (before-read) (.read r cbuf))
-      ([cbuf off len] (before-read) (.read r cbuf off len)))))
+      ([]
+        (before-read)
+        (let [c (proxy-super read)]
+          (when-not (neg? c) (swap! counter inc))
+          c))
+      ([cbuf]
+        (before-read)
+        (let [n (proxy-super read cbuf)]
+          (when (pos? n) (swap! counter + n))
+          n))
+      ([cbuf off len]
+        (before-read)
+        (let [n (proxy-super read cbuf off len)]
+          (when (pos? n) (swap! counter + n))
+          n)))
+    (unread
+      ([c-or-cbuf]
+        (if (integer? c-or-cbuf)
+          (when-not (neg? c-or-cbuf) (swap! counter dec))
+          (swap! counter - (alength c-or-cbuf)))
+        (proxy-super unread c-or-cbuf))
+      ([cbuf off len]
+        (swap! counter - len)
+        (proxy-super unread cbuf off len)))
+    (skip [n]
+      (let [n (proxy-super skip n)]
+        (swap! counter + n)
+        n))
+    (readLine []
+      (when-some [s (proxy-super readLine)]
+        (swap! counter + (count s))
+        s))))
 
 (defn- close-socket! [x]
   ; hacky way because the socket is not exposed by clojure.core.server
@@ -227,6 +256,8 @@
                               (flush)
                               ; (reset! aw (blocking-write))
                               (set! *out* raw-out)))
+          in-offset (atom 0)
+          in (unrepl-reader *in* ensure-raw-repl in-offset)
           
           interruptible-eval
           (fn [form]
@@ -265,7 +296,7 @@
       (swap! sessions assoc session-id session-state)
       (binding [*out* raw-out
                 *err* (tagging-writer :err write)
-                *in* (-> *in* (pre-reader ensure-raw-repl) clojure.lang.LineNumberingPushbackReader.)
+                *in* in
                 *file* "unrepl-session"
                 *source-path* "unrepl-session"
                 p/*elide* (:put elision-store)
@@ -289,11 +320,15 @@
                                       (:prompt-vars @session-state))]))
           :read (fn [request-prompt request-exit]
                   (blame :read (let [line+col [(.getLineNumber *in*) (.getColumnNumber *in*)]
+                                     offset @in-offset
                                      r (m/repl-read request-prompt request-exit)
                                      line+col' [(.getLineNumber *in*) (.getColumnNumber *in*)]]
                                  (or (#{request-prompt request-exit} r)
                                    (do
-                                     (write [:echo {:from line+col :to line+col'} (var-set eval-id (inc @eval-id))])
+                                     (write [:echo {:from line+col :to line+col'
+                                                    :offset offset
+                                                    :len (- @in-offset offset)}
+                                             (var-set eval-id (inc @eval-id))])
                                      r)))))
           :eval (fn [form]
                   (let [id @eval-id]
