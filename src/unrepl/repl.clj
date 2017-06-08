@@ -51,40 +51,40 @@
 
 (def ^:dynamic write)
 
-(defn unrepl-reader [^java.io.Reader r before-read counter]
+(defn unrepl-reader [^java.io.Reader r before-read offset!]
   (proxy [clojure.lang.LineNumberingPushbackReader] [r]
     (read 
       ([]
         (before-read)
         (let [c (proxy-super read)]
-          (when-not (neg? c) (swap! counter inc))
+          (when-not (neg? c) (offset! 1))
           c))
       ([cbuf]
         (before-read)
         (let [n (proxy-super read cbuf)]
-          (when (pos? n) (swap! counter + n))
+          (when (pos? n) (offset! n))
           n))
       ([cbuf off len]
         (before-read)
         (let [n (proxy-super read cbuf off len)]
-          (when (pos? n) (swap! counter + n))
+          (when (pos? n) (offset! n))
           n)))
     (unread
       ([c-or-cbuf]
         (if (integer? c-or-cbuf)
-          (when-not (neg? c-or-cbuf) (swap! counter dec))
-          (swap! counter - (alength c-or-cbuf)))
+          (when-not (neg? c-or-cbuf) (offset! -1))
+          (offset! (- (alength c-or-cbuf))))
         (proxy-super unread c-or-cbuf))
       ([cbuf off len]
-        (swap! counter - len)
+        (offset! (- len))
         (proxy-super unread cbuf off len)))
     (skip [n]
       (let [n (proxy-super skip n)]
-        (swap! counter + n)
+        (offset! n)
         n))
     (readLine []
       (when-some [s (proxy-super readLine)]
-        (swap! counter + (count s))
+        (offset! (count s))
         s))))
 
 (defn- close-socket! [x]
@@ -222,6 +222,7 @@
           write-here (fuse-write aw)
           edn-out (tagging-writer :out write-here)
           session-state (atom {:current-eval {} :in *in*
+                               :in-offset 0
                                :write-atom aw
                                :pre-prompt (java.util.concurrent.LinkedBlockingQueue.)
                                :log-eval (fn [msg]
@@ -256,8 +257,7 @@
                               (flush)
                               ; (reset! aw (blocking-write))
                               (set! *out* raw-out)))
-          in-offset (atom 0)
-          in (unrepl-reader *in* ensure-raw-repl in-offset)
+          in (unrepl-reader *in* ensure-raw-repl #(swap! session-state update :in-offset + %))
           
           interruptible-eval
           (fn [form]
@@ -313,21 +313,23 @@
                           (when (seq exs)
                             (throw (ex-info "Errors happened during pre-prompt." {:exs exs}))))))
                     (write [:prompt (into {:file *file*
-                                           :line (.getLineNumber *in*)}
+                                           :line (.getLineNumber *in*)
+                                           :column (.getColumnNumber *in*)
+                                           :offset (:in-offset @session-state)}
                                       (map (fn [v]
                                              (let [m (meta v)]
                                                [(symbol (name (ns-name (:ns m))) (name (:name m))) @v])))
                                       (:prompt-vars @session-state))]))
           :read (fn [request-prompt request-exit]
                   (blame :read (let [line+col [(.getLineNumber *in*) (.getColumnNumber *in*)]
-                                     offset @in-offset
+                                     offset (:in-offset @session-state)
                                      r (m/repl-read request-prompt request-exit)
                                      line+col' [(.getLineNumber *in*) (.getColumnNumber *in*)]]
                                  (or (#{request-prompt request-exit} r)
-                                   (do
+                                   (let [offset' (:in-offset @session-state)]
                                      (write [:echo {:from line+col :to line+col'
                                                     :offset offset
-                                                    :len (- @in-offset offset)}
+                                                    :len (- offset' offset)}
                                              (var-set eval-id (inc @eval-id))])
                                      r)))))
           :eval (fn [form]
