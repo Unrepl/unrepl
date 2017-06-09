@@ -51,41 +51,46 @@
 
 (def ^:dynamic write)
 
-(defn unrepl-reader [^java.io.Reader r before-read offset!]
-  (proxy [clojure.lang.LineNumberingPushbackReader] [r]
-    (read 
-      ([]
-        (before-read)
-        (let [c (proxy-super read)]
-          (when-not (neg? c) (offset! 1))
-          c))
-      ([cbuf]
-        (before-read)
-        (let [n (proxy-super read cbuf)]
-          (when (pos? n) (offset! n))
+(defn unrepl-reader [^java.io.Reader r before-read]
+  (let [offset (atom 0)
+        offset! #(swap! offset + %)]
+    (proxy [clojure.lang.LineNumberingPushbackReader clojure.lang.ILookup] [r]
+      (valAt
+        ([k] (get this k nil))
+        ([k not-found] (case k :offset @offset not-found)))
+      (read
+        ([]
+          (before-read)
+          (let [c (proxy-super read)]
+            (when-not (neg? c) (offset! 1))
+            c))
+        ([cbuf]
+          (before-read)
+          (let [n (proxy-super read cbuf)]
+            (when (pos? n) (offset! n))
+            n))
+        ([cbuf off len]
+          (before-read)
+          (let [n (proxy-super read cbuf off len)]
+            (when (pos? n) (offset! n))
+            n)))
+      (unread
+        ([c-or-cbuf]
+          (if (integer? c-or-cbuf)
+            (when-not (neg? c-or-cbuf) (offset! -1))
+            (offset! (- (alength c-or-cbuf))))
+          (proxy-super unread c-or-cbuf))
+        ([cbuf off len]
+          (offset! (- len))
+          (proxy-super unread cbuf off len)))
+      (skip [n]
+        (let [n (proxy-super skip n)]
+          (offset! n)
           n))
-      ([cbuf off len]
-        (before-read)
-        (let [n (proxy-super read cbuf off len)]
-          (when (pos? n) (offset! n))
-          n)))
-    (unread
-      ([c-or-cbuf]
-        (if (integer? c-or-cbuf)
-          (when-not (neg? c-or-cbuf) (offset! -1))
-          (offset! (- (alength c-or-cbuf))))
-        (proxy-super unread c-or-cbuf))
-      ([cbuf off len]
-        (offset! (- len))
-        (proxy-super unread cbuf off len)))
-    (skip [n]
-      (let [n (proxy-super skip n)]
-        (offset! n)
-        n))
-    (readLine []
-      (when-some [s (proxy-super readLine)]
-        (offset! (count s))
-        s))))
+      (readLine []
+        (when-some [s (proxy-super readLine)]
+          (offset! (count s))
+          s)))))
 
 (defn- close-socket! [x]
   ; hacky way because the socket is not exposed by clojure.core.server
@@ -203,12 +208,11 @@
                 .getDeclaredFields
                 (some #(when (= "_columnNumber" (.getName ^java.lang.reflect.Field %)) %)))]
     (doto field (.setAccessible true)) ; sigh
-    (some-> session-id session :pre-prompt
-      (.put (fn []
-              (set! *file* file)
-              (set! *source-path* file)
-              (.setLineNumber *in* line)
-              (.set field *in* (int col)))))))
+    (when-some [in (some-> session-id session :in)]
+      (set! *file* file)
+      (set! *source-path* file)
+      (.setLineNumber in line)
+      (.set field in (int col)))))
 
 (defn start []
   (with-local-vars [in-eval false
@@ -221,10 +225,17 @@
           aw (atom (atomic-write raw-out))
           write-here (fuse-write aw)
           edn-out (tagging-writer :out write-here)
-          session-state (atom {:current-eval {} :in *in*
-                               :in-offset 0
+          ensure-raw-repl (fn []
+                            (when (and @in-eval @unrepl) ; reading from eval!
+                              (var-set unrepl false)
+                              (write [:bye {:reason :upgrade :actions {}}])
+                              (flush)
+                              ; (reset! aw (blocking-write))
+                              (set! *out* raw-out)))
+          in (unrepl-reader *in* ensure-raw-repl)
+          session-state (atom {:current-eval {}
+                               :in in
                                :write-atom aw
-                               :pre-prompt (java.util.concurrent.LinkedBlockingQueue.)
                                :log-eval (fn [msg]
                                            (when (bound? eval-id)
                                              (write [:log msg @eval-id])))
@@ -246,18 +257,11 @@
                                                                :log-all
                                                                `(some-> ~session-id session :log-all)
                                                                :set-source
-                                                               `(set-file-line-col ~session-id
-                                                                  ~(tagged-literal 'unrepl/param :unrepl/sourcename)
-                                                                  ~(tagged-literal 'unrepl/param :unrepl/line)
-                                                                  ~(tagged-literal 'unrepl/param :unrepl/column))}}]))))
-          ensure-raw-repl (fn []
-                            (when (and @in-eval @unrepl) ; reading from eval!
-                              (var-set unrepl false)
-                              (write [:bye {:reason :upgrade :actions {}}])
-                              (flush)
-                              ; (reset! aw (blocking-write))
-                              (set! *out* raw-out)))
-          in (unrepl-reader *in* ensure-raw-repl #(swap! session-state update :in-offset + %))
+                                                               `(unrepl/do
+                                                                  (set-file-line-col ~session-id
+                                                                   ~(tagged-literal 'unrepl/param :unrepl/sourcename)
+                                                                   ~(tagged-literal 'unrepl/param :unrepl/line)
+                                                                   ~(tagged-literal 'unrepl/param :unrepl/column)))}}]))))
           
           interruptible-eval
           (fn [form]
@@ -305,27 +309,20 @@
         (m/repl
           :prompt (fn []
                     (ensure-unrepl)
-                    (let [q (:pre-prompt @session-state)]
-                      (loop [exs []]
-                        (if-some [f (.poll q)]
-                          (recur (try (f) exs
-                                   (catch Throwable t (conj exs t))))
-                          (when (seq exs)
-                            (throw (ex-info "Errors happened during pre-prompt." {:exs exs}))))))
                     (write [:prompt (into {:file *file*
                                            :line (.getLineNumber *in*)
                                            :column (.getColumnNumber *in*)
-                                           :offset (:in-offset @session-state)}
+                                           :offset (:offset *in*)}
                                       (map (fn [v]
                                              (let [m (meta v)]
                                                [(symbol (name (ns-name (:ns m))) (name (:name m))) @v])))
                                       (:prompt-vars @session-state))]))
           :read (fn [request-prompt request-exit]
                   (blame :read (let [line+col [(.getLineNumber *in*) (.getColumnNumber *in*)]
-                                     offset (:in-offset @session-state)
+                                     offset (:offset *in*)
                                      r (m/repl-read request-prompt request-exit)
                                      line+col' [(.getLineNumber *in*) (.getColumnNumber *in*)]
-                                     offset' (:in-offset @session-state)
+                                     offset' (:offset *in*)
                                      len (- offset' offset)
                                      id (when-not (#{request-prompt request-exit} r)
                                           (var-set eval-id (inc @eval-id)))]
@@ -333,7 +330,13 @@
                                                 :offset offset
                                                 :len (- offset' offset)}
                                          id])
-                                 r)))
+                                 (if (and (seq?  r) (= (first r) 'unrepl/do))
+                                   (let [id @eval-id]
+                                     (binding [*err* (tagging-writer :err id write)
+                                               *out* (tagging-writer :out id write)]
+                                       (eval (second r)))
+                                     request-prompt)
+                                   r))))
           :eval (fn [form]
                   (let [id @eval-id]
                     (binding [*err* (tagging-writer :err id write)
