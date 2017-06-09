@@ -324,14 +324,16 @@
                   (blame :read (let [line+col [(.getLineNumber *in*) (.getColumnNumber *in*)]
                                      offset (:in-offset @session-state)
                                      r (m/repl-read request-prompt request-exit)
-                                     line+col' [(.getLineNumber *in*) (.getColumnNumber *in*)]]
-                                 (or (#{request-prompt request-exit} r)
-                                   (let [offset' (:in-offset @session-state)]
-                                     (write [:echo {:from line+col :to line+col'
-                                                    :offset offset
-                                                    :len (- offset' offset)}
-                                             (var-set eval-id (inc @eval-id))])
-                                     r)))))
+                                     line+col' [(.getLineNumber *in*) (.getColumnNumber *in*)]
+                                     offset' (:in-offset @session-state)
+                                     len (- offset' offset)
+                                     id (when-not (#{request-prompt request-exit} r)
+                                          (var-set eval-id (inc @eval-id)))]
+                                 (write [:read {:from line+col :to line+col'
+                                                :offset offset
+                                                :len (- offset' offset)}
+                                         id])
+                                 r)))
           :eval (fn [form]
                   (let [id @eval-id]
                     (binding [*err* (tagging-writer :err id write)

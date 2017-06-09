@@ -157,12 +157,12 @@ The payload is a map with a required key `:ex` which maps to the exception and a
 
 The arguments will be machine-printed and as such could be elided.
 
-#### `:echo`
+#### `:read`
 
-Echo is meant to help tools to relate outputs to inputs. It can be especially useful whene several forms are sent in a batch or when syntax errors happen and the reader resumes reading.
+`:read` is meant to help tools to relate outputs to inputs. It can be especially useful whene several forms are sent in a batch or when syntax errors happen and the reader resumes reading.
 
 ```clj
-[:echo {:start [line col] :end [line col] :offset N :len N} 1]
+[:read {:start [line col] :end [line col] :offset N :len N} 1]
 ```
 
 Offset is the number of characters (well UTF-16 code units) from the start of the unrepl session *with line-delimiting sequences normalized to one character* (`\n`) -- so if the client sends a `CRLF` the offset is only increased by 1.
@@ -310,7 +310,7 @@ Once the above expression evaluated, we have the following interactions:
 
 ```clj
 (timbre/log :info "a" (range))
-[:echo {:from [14 1], :to [15 1]} 12]
+[:read {:from [14 1], :to [15 1], :offset 342, :len 31} 12]
 [:started-eval {:actions {:interrupt (unrepl.repl/interrupt! :session329 12), :background (unrepl.repl/background! :session329 12)}} 12]
 [:log [:info "user" #inst "2017-04-04T14:56:56.574-00:00" "a" (0 1 2 3 4 5 6 7 8 9 #unrepl/... {:get (unrepl.repl/fetch :G__3948)})] 12]
 [:eval nil 12]
