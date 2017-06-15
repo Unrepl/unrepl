@@ -10,10 +10,9 @@ An unrepl repl is just a REPL with a fancy printer.
 
 This document is a work in progress. A companion implementation is available in the `unrepl.repl` namespace.
 
-The output (edn messages) & input specification (message templates) is mostly done. What is left to specify is:
+The output (edn messages) & input specification ([message templates](#message-templates)) is mostly done. What is left to specify is:
 
  * more standard (but optional) actions
-
  * some parameters.
 
 You can ask questions and share feedback on the `#unrepl` channel on the Clojurians Slack.
@@ -22,19 +21,19 @@ You can ask questions and share feedback on the `#unrepl` channel on the Clojuri
 
 Imagine a protocol so flexible that you can upgrade it to anything you want.
 
-This protocol exists it's a REPL. A standard repl (clojure.main or the socket repl) are not perfect for tooling but they provide a common minimal ground: an input and output streams of characters. Both can be hijacked to install your own handler, including another REPL better suited for its client.
+This protocol exists, it's a REPL. A standard repl (clojure.main or the socket repl) is not perfect for tooling but it provides a common minimal ground: an input and output streams of characters. Both can be hijacked to install your own handler, including another REPL better suited for its client.
 
 REPL: the ultimate content negotiation protocol!
 
 The present repository suggests representations for machine-to-machine REPLs and provides a reference implementation.
 
-A REPL by nature is a very sequential process: it reads then evals, then prints and then starts over. One REPL = One thread. Concurrency is achieved by having several REPLs.
+A REPL is, by nature, a very sequential process: it reads, then evals, then prints, and then starts over. One REPL = One thread. Concurrency is achieved by having several REPLs.
 
 A REPL is also stateful, it is a connected protocol, so the context doesn't need to be transferred constantly.
 
 A REPL is meant for evaluating code.
 
-It follows that some tooling needs (e.g. autocompletion) may be better serviced by a separate connection which may not be a REPL (but may have started as a REPL upgraded to something else).
+Some tooling needs (e.g. autocompletion) may be better serviced by a separate connection, which should not necessarily be a REPL (but may have started as a REPL upgraded to something else.)
 
 Parts of this specification assumes two REPLs: the main (or user) REPL and the control (or client) REPL.
 
@@ -46,7 +45,7 @@ Parts of this specification assumes two REPLs: the main (or user) REPL and the c
 
 ### Reserved keywords and extensions
 
-All simple (not qualified) keywords, the `unrepl` namespace and all namespaces starting by `unrepl.` are reserved.
+All simple (not qualified) keywords, the `unrepl` namespace, and all namespaces starting by `unrepl.` are reserved.
 
 This protocol is designed to be extended, extensions just have to be namespaced and designed in a way that a client can ignore messages from unknown extensions.
 
@@ -56,15 +55,13 @@ The input is expected to be free form (a character stream)
 
 The output is a stream of EDN datastructures.
 
-To be more precise it's a stream of 2/3-item tuples:
+To be more precise it's a stream of 2/3-item tuples, e.g. `[:read {:some :payload} 1]`, where:
 
-1. the first component is a tag (keyword)
-2. the second id the payload
-3. (optional) a group id (meant to group together messages)
+1. First component is a tag (keyword). Its purpose is to allow demultiplexing things that are usually intermingled in a repl display.
+2. Second component is the payload.
+3. Third (optional) component is a group id, meant to group together messages.
 
-The purpose of the tag is to allow demultiplexing things that are usually intermingled in a repl display.
-
-Eight core tags are defined: `:unrepl/hello`, `:bye`, `:prompt`, `:started-eval`, `:eval`, `:out`, `:err` and `:exception`. More tags are defined in standard actions.
+Eight core tags are defined: `:unrepl/hello`, `:bye`, `:prompt`, `:started-eval`, `:eval`, `:out`, `:err` and `:exception`. More tags are defined in standard [actions](#actions).
 
 | Tag | Payload |
 |-----|---------|
@@ -82,15 +79,15 @@ Messages not understood by a client should be ignored.
 
 #### `:unrepl/hello`
 
-The first message must be a `:unrepl/hello`. It's the only message whose tag is qualified. It's namespaced to make sniffing the protocol easier. (For example when connecting to a socket you may either get an existing unrepl repl or a standard repl that you are going to upgrade.)
+The first message must be a `:unrepl/hello`. It's the only message whose tag is qualified. It's namespaced to make sniffing the protocol easier. For example, when connecting to a socket you may either get an existing unrepl repl or a standard repl that you are going to upgrade.
 
-Its payload is a map which may have a `:actions` key mapping to a map of action ids (keywords) to template messages. All those actions should be specific to the session.
+Its payload is a map which may have a `:actions` key mapping to another map of [action ids](#actions) (keywords) to [template messages](#message-templates). All those actions should be specific to the session.
 
-This is how an unrepl implementation advertises its capabilities: by listing them along a machine-readable specification of the message to send to trigger them.
+This is how an unrepl implementation advertises its capabilities: by listing them along a machine-readable specification of the message needed to be sent to trigger them.
 
-The hello map may also have a `:session` key which is just an identifier (any type) allowing a client to recognize a session it has already visited (eg when getting a `:unrepl/hello` after a `:bye`).
+The hello map may also have a `:session` key which is just an identifier (any type) allowing a client to recognize a session it has already visited (e.g. when getting a `:unrepl/hello` after a `:bye`).
 
-The hello map may also have a `:about` key mapped to a map. The intent of this map is to contain information about the REPL implementation, supported language, running environment (VM, OS etc.).
+The hello map may also have a `:about` key mapped to a map. The intent of the `:about:` map is to contain information about the REPL implementation, supported language, running environment (VM, OS etc.).
 
 #### `:bye`
 
@@ -140,12 +137,12 @@ Example:
 
 #### `:exception`
 
-The payload is a map with a required key `:ex` which maps to the exception and a second optional key `:phase` which can take 5 values:
+The payload is a map with a required key `:ex` which maps to the exception, and a second optional key `:phase` which can take 5 values:
 
- * `:unknown` (default) no indication on the source of the exception,
- * `:read`, the exception occured during `read` and is more likely a syntax error (may be an IO or any exception when `*read-eval*` is used),
- * `:eval`, the exception occured during `eval`
- * `:print`, the exception occured during `print`
+ * `:unknown`, (default) no indication on the source of the exception.
+ * `:read`, the exception occured during `read` and is more likely a syntax error. (May be an IO or any exception when `*read-eval*` is used.)
+ * `:eval`, the exception occured during `eval`.
+ * `:print`, the exception occured during `print`.
  * `:repl`, the exception occured in the repl code itself, fill an issue.
 
 #### `:log`
@@ -159,13 +156,13 @@ The arguments will be machine-printed and as such could be elided.
 
 #### `:read`
 
-`:read` is meant to help tools to relate outputs to inputs. It can be especially useful whene several forms are sent in a batch or when syntax errors happen and the reader resumes reading.
+`:read` is meant to help tools to relate outputs to inputs. It can be especially useful when several forms are sent in a batch or when syntax errors happen and the reader resumes reading.
 
 ```clj
 [:read {:start [line col] :end [line col] :offset N :len N} 1]
 ```
 
-Offset is the number of characters (well UTF-16 code units) from the start of the unrepl session *with line-delimiting sequences normalized to one character* (`\n`) -- so if the client sends a `CRLF` the offset is only increased by 1.
+Offset is the number of characters (well UTF-16 code units) from the start of the unrepl session. *Line-delimiting sequences are normalized to one character* (`\n`) -- so if the client sends a `CRLF` the offset is only increased by 1.
 
 
 ### Machine printing
@@ -175,21 +172,16 @@ Clojure values are machine-printed to EDN.
 
 #### Filling the gap
 
-Ratios (e.g. `4/3`) are printed as `#unrepl/ratio [4 3]`
-
-Classes are printed as `#unrepl.java/class ClassName` or `#unrepl.java/class [ClassName]` for arrays (with no bounds on the nesting).
-
-Namespaces are printed as `#unrepl/ns name.sp.ace`.
-
-Metadata is preinted as `#unrepl/meta [{meta data} value]`.
-
-Patterns (regexes) are printed as `#unrepl/pattern "[0-9]+"`.
-
-Objects are printed as `#unrepl/object [class "id" representation]`. The representation is implementation dependent. One may use an elided map representation to allow browsing the object graph.
+- Ratios (e.g. `4/3`) are printed as `#unrepl/ratio [4 3]`.
+- Classes are printed as `#unrepl.java/class ClassName` or `#unrepl.java/class [ClassName]` for arrays (with no bounds on the nesting).
+- Namespaces are printed as `#unrepl/ns name.sp.ace`.
+- Metadata is printed as `#unrepl/meta [{meta data} value]`.
+- Patterns (regexes) are printed as `#unrepl/pattern "[0-9]+"`.
+- Objects are printed as `#unrepl/object [class "id" representation]`. The representation is implementation dependent. One may use an elided map representation to allow browsing the object graph.
 
 #### Ellipsis or elisions
 
-Printing should be bound in length and depth. When the printer decides to elidea sequence of values it should emit a tagge literal `#unrepl/... m` where `m` is either `nil` or a map. This map may contain a `:get` key associated to a template message. All simple (non qualified) keywords (and those with `unrepl` namespace) are reserved for future revisions of these specification.
+Printing should be bound in length and depth. When the printer decides to elide a sequence of values, it should emit a tagged literal `#unrepl/... m`, where `m` is either `nil` or a map. This map may contain a `:get` key associated to a [template message](#message-templates). All simple (non qualified) keywords (and those with `unrepl` namespace) are reserved for future revisions of these specification.
 
 Example: machine printing `(range)`
 
@@ -220,7 +212,7 @@ So continuing the `(range)` example:
 Elided maps representations must still have an even number of entries, so a second elision marker `#unrepl/... nil` is added to pad the representation. All data (if any) is supported by the elision in key position. When splicing the expansion both markers are replaced.
 
 ###### Identity and value
-These maps may also have an `:id` key to keep elided values different when used in sets or as keys in maps. So either each elision get a unique id or the id may be value-based (that is: when two elisions ids are equal their elided values are equal). When `:get` is provided there's no need for `:id` (because by definition the `:get` value will be unique or at least value-based).
+These maps may also have an `:id` key to keep elided values different when used in sets or as keys in maps. So either each elision get a unique id or the id may be value-based (that is: when two elisions ids are equal, their elided values are equal). When `:get` is provided there's no need for `:id` (because by definition the `:get` value will be unique or at least value-based).
 
 Example: printing the set `#{[1] [2]}` with a very shallow print depth and a (broken) printer that doesn't assign `:id` nor `:get` returns:
 
@@ -232,7 +224,7 @@ which is not readable. Hence the necessity of `:id` or `:get` to provide unique 
 
 #### Lazy-seq errors
 
-When realization of a lazy sequence throws an exception the exception is inlined in the sequence representation and tagged with `unrepl/lazy-error`.
+When realization of a lazy sequence throws an exception, the exception is inlined in the sequence representation and tagged with `unrepl/lazy-error`.
 
 For example, the value of `(map #(/ %) (iterate dec 3))` prints as:
 
@@ -242,7 +234,14 @@ For example, the value of `(map #(/ %) (iterate dec 3))` prints as:
 
 #### MIME Attachments
 
-Some values may print to `#unrepl/mime m` where m is a map with keys: `:content-type` (optional, string, defaults to "application/octet-stream"), `:content-length` (optional, number), `:filename` (optional, string), `:details` (optional, anything, a representation of the object (eg for a `java.io.File` instance it could be the path and the class)), `:content` (optional base64-encoded) and `:get` (message template).
+Some values may print to `#unrepl/mime m` where m is a map with keys:
+
+- `:content-type`: optional, string, defaults to "application/octet-stream".
+- `:content-length`: optional, number.
+- `:filename`: optional, string.
+- `:details`: optional, anything, a representation of the object (e.g. for a `java.io.File` instance it could be the path and the class).
+- `:content` optional base64-encoded.
+- `:get` message template.
 
 ### Message Templates
 
@@ -253,6 +252,7 @@ A message template is an executable description of the expected message. It's a 
 All actions are optional.
 
 #### Session actions
+
 (Advertised in `:unrepl/hello` messages.)
 
 ##### `:exit`
@@ -275,7 +275,7 @@ Sets the filename, line and column numbers for subsequent evaluations. The chang
 
 Upgrades the control REPL where it is issued to a sideloading session.
 
-When a sideloading session is started the JVM will ask the client for classes or resources it does not have, basically this allows the extension of the classpath.
+When a sideloading session is started, the JVM will ask the client for classes or resources it does not have. Basically, this allows the extension of the classpath.
 
 A sideloading session is a very simple edn-protocol.
 
