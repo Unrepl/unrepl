@@ -2,7 +2,20 @@
   (:require [clojure.string :as str]
     [clojure.edn :as edn]))
 
-(def ^:dynamic *elide* (constantly nil))
+(def ^:dynamic *elide*
+  "Function of 1 argument which returns the elision."
+  (constantly nil))
+
+(def ^:dynamic *attach* nil)
+
+(defprotocol DefaultEdnize
+  (default-ednize [x]))
+
+(def ^:dynamic *ednize* #'default-ednize)
+
+(def ^:dynamic *realize-on-print*
+  "Set to false to avoid realizing lazy sequences."
+  true)
 
 (deftype ElidedKVs [s]
   clojure.lang.Seqable
@@ -11,7 +24,7 @@
 (def atomic? (some-fn nil? true? false? char? string? symbol? keyword? #(and (number? %) (not (ratio? %)))))
 
 (defn- as-str
-  "Like pr-str but escapes all ASCII conytrol chars."
+  "Like pr-str but escapes all ASCII control chars."
   [x]
   ;hacky
   (cond
@@ -20,15 +33,6 @@
     (char? x) (str/replace (pr-str x) #"\p{Cntrl}"
                 #(format "u%04x" (int (.charAt ^String % 0))))
     :else (pr-str x)))
-
-(defn- insert-class [classes ^Class class]
-  (let [ancestor-or-self? #(.isAssignableFrom ^Class % class)]
-    (-> []
-     (into (remove ancestor-or-self?) classes)
-     (conj class)
-     (into (filter ancestor-or-self?) classes))))
-
-(def ^:dynamic *attach* nil)
 
 (defmacro ^:private latent-fn [& fn-body]
   `(let [d# (delay (binding [*ns* (find-ns '~(ns-name *ns*))] (eval '(fn ~@fn-body))))]
@@ -90,9 +94,6 @@
   (reduce-kv (fn [_ class f]
                (when (instance? class x) (reduced (f x)))) nil *object-representations*)) ; todo : cache
 
-(defprotocol DefaultEdnize
-  (default-ednize [x]))
-
 (defn- class-form [^Class x]
   (if (.isArray x) [(-> x .getComponentType class-form)] (symbol (.getName x))))
 
@@ -111,12 +112,6 @@
     (tagged-literal 'unrepl/object
       [(class x) (format "0x%x" (System/identityHashCode x)) (object-representation x)
        {:bean {(tagged-literal 'unrepl/... (*elide* (ElidedKVs. (bean x)))) (tagged-literal 'unrepl/... nil)}}])))
-
-(def ^:dynamic *ednize* default-ednize)
-
-(def ^:dynamic *realize-on-print*
-  "Set to false to avoid realizing lazy sequences."
-  true)
 
 (defmacro ^:private blame-seq [& body]
   `(try (seq ~@body)
