@@ -334,7 +334,7 @@
                                    (let [id @eval-id]
                                      (binding [*err* (tagging-writer :err id write)
                                                *out* (tagging-writer :out id write)]
-                                       (eval (second r)))
+                                       (eval (cons 'do (next r))))
                                      request-prompt)
                                    r))))
           :eval (fn [form]
