@@ -90,24 +90,29 @@
   (reduce-kv (fn [_ class f]
                (when (instance? class x) (reduced (f x)))) nil *object-representations*)) ; todo : cache
 
-(defmulti default-ednize-fn class)
-(defmethod default-ednize-fn clojure.lang.TaggedLiteral [x] x)
-(defmethod default-ednize-fn clojure.lang.Ratio [^clojure.lang.Ratio x] (tagged-literal 'unrepl/ratio [(.numerator x) (.denominator x)]))
-(defmethod default-ednize-fn Throwable [t] (tagged-literal 'error (Throwable->map t)))
+(defprotocol DefaultEdnize
+  (default-ednize [x]))
+
 (defn- class-form [^Class x]
   (if (.isArray x) [(-> x .getComponentType class-form)] (symbol (.getName x))))
-(defmethod default-ednize-fn Class [x] (tagged-literal 'unrepl.java/class (class-form x)))
-(defmethod default-ednize-fn java.util.Date [x] (as-inst x))
-(defmethod default-ednize-fn java.util.Calendar [x] (as-inst x))
-(defmethod default-ednize-fn java.sql.Timestamp [x] (as-inst x))
-(defmethod default-ednize-fn clojure.lang.Namespace [x] (tagged-literal 'unrepl/ns (ns-name x)))
-(defmethod default-ednize-fn java.util.regex.Pattern [x] (tagged-literal 'unrepl/pattern (str x)))
-(defmethod default-ednize-fn Object [x]
-  (tagged-literal 'unrepl/object
-    [(class x) (format "0x%x" (System/identityHashCode x)) (object-representation x)
-     {:bean {(tagged-literal 'unrepl/... (*elide* (ElidedKVs. (bean x)))) (tagged-literal 'unrepl/... nil)}}]))
 
-(def ^:dynamic *ednize* default-ednize-fn)
+(extend-protocol DefaultEdnize
+  clojure.lang.TaggedLiteral (default-ednize [x] x)
+  clojure.lang.Ratio (default-ednize [^clojure.lang.Ratio x] (tagged-literal 'unrepl/ratio [(.numerator x) (.denominator x)]))
+  Throwable (default-ednize [t] (tagged-literal 'error (Throwable->map t)))
+  Class (default-ednize [x] (tagged-literal 'unrepl.java/class (class-form x)))
+  java.util.Date (default-ednize [x] (as-inst x))
+  java.util.Calendar (default-ednize [x] (as-inst x))
+  java.sql.Timestamp (default-ednize [x] (as-inst x))
+  clojure.lang.Namespace (default-ednize [x] (tagged-literal 'unrepl/ns (ns-name x)))
+  java.util.regex.Pattern (default-ednize [x] (tagged-literal 'unrepl/pattern (str x)))
+  Object
+  (default-ednize [x]
+    (tagged-literal 'unrepl/object
+      [(class x) (format "0x%x" (System/identityHashCode x)) (object-representation x)
+       {:bean {(tagged-literal 'unrepl/... (*elide* (ElidedKVs. (bean x)))) (tagged-literal 'unrepl/... nil)}}])))
+
+(def ^:dynamic *ednize* default-ednize)
 
 (def ^:dynamic *realize-on-print*
   "Set to false to avoid realizing lazy sequences."
