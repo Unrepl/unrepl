@@ -87,7 +87,7 @@ This is how an unrepl implementation advertises its capabilities: by listing the
 
 The hello map may also have a `:session` key which is just an identifier (any type) allowing a client to recognize a session it has already visited (e.g. when getting a `:unrepl/hello` after a `:bye`).
 
-The hello map may also have a `:about` key mapped to a map. The intent of the `:about:` map is to contain information about the REPL implementation, supported language, running environment (VM, OS etc.).
+The hello map may also have a `:about` key mapped to a map. The intent of the `:about` map is to contain information about the REPL implementation, supported language, running environment (VM, OS etc.).
 
 #### `:bye`
 
