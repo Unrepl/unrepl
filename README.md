@@ -67,7 +67,7 @@ Eight core tags are defined: `:unrepl/hello`, `:bye`, `:prompt`, `:started-eval`
 |-----|---------|
 |`:unrepl/hello`|A map or nil|
 |`:bye`|A map or nil|
-|`:prompt`|A map of qualified symbols (var names) to their values|
+|`:prompt`|A map or nil|
 |`:started-eval`|A map or nil|
 |`:eval`|The evaluation result|
 |`:out`|A string|
@@ -154,16 +154,30 @@ The payload is a map with a required key `:ex` which maps to the exception, and 
 
 The arguments will be machine-printed and as such could be elided.
 
-#### `:read`
+#### `:prompt`
 
-`:read` is meant to help tools to relate outputs to inputs. It can be especially useful when several forms are sent in a batch or when syntax errors happen and the reader resumes reading.
+The payload provides general information about the unrepl session, covering two topics:
+
+ * Information about the current input state.
+ * Qualified symbols (var names) mapped to their respective values.
+
+e.g.
 
 ```clj
-[:read {:start [line col] :end [line col] :offset N :len N} 1]
+[:prompt {:file "unrepl-session", :line 1, :column 1, :offset 0, clojure.core/*warn-on-reflection* nil, clojure.core/*ns* #unrepl/ns user}]
 ```
 
-Offset is the number of characters (well UTF-16 code units) from the start of the unrepl session. *Line-delimiting sequences are normalized to one character* (`\n`) -- so if the client sends a `CRLF` the offset is only increased by 1.
+Where `:offset` is the number of characters (well UTF-16 code units) from the start of the unrepl session. *Line-delimiting sequences are normalized to one character* (`\n`) -- so if the client sends a `CRLF` the offset is only increased by 1.
 
+#### `:read`
+
+Similar to `:prompt`, `:read` is meant to help tools to relate outputs to inputs by providing information regarding the latest stream sent to the reader. It can be especially useful when several forms are sent in a batch or when syntax errors happen and the reader resumes reading.
+
+```clj
+[:read {:from [line col] :to [line col] :offset N :len N} 1]
+```
+
+`:offset` works exactly as in `:prompt`.
 
 ### Machine printing
 Pretty printing is meant for humans and should be performed on the client.
@@ -172,12 +186,12 @@ Clojure values are machine-printed to EDN.
 
 #### Filling the gap
 
-- Ratios (e.g. `4/3`) are printed as `#unrepl/ratio [4 3]`.
-- Classes are printed as `#unrepl.java/class ClassName` or `#unrepl.java/class [ClassName]` for arrays (with no bounds on the nesting).
-- Namespaces are printed as `#unrepl/ns name.sp.ace`.
-- Metadata is printed as `#unrepl/meta [{meta data} value]`.
-- Patterns (regexes) are printed as `#unrepl/pattern "[0-9]+"`.
-- Objects are printed as `#unrepl/object [class "id" representation]`. The representation is implementation dependent. One may use an elided map representation to allow browsing the object graph.
+ * Ratios (e.g. `4/3`) are printed as `#unrepl/ratio [4 3]`.
+ * Classes are printed as `#unrepl.java/class ClassName` or `#unrepl.java/class [ClassName]` for arrays (with no bounds on the nesting).
+ * Namespaces are printed as `#unrepl/ns name.sp.ace`.
+ * Metadata is printed as `#unrepl/meta [{meta data} value]`.
+ * Patterns (regexes) are printed as `#unrepl/pattern "[0-9]+"`.
+ * Objects are printed as `#unrepl/object [class "id" representation]`. The representation is implementation dependent. One may use an elided map representation to allow browsing the object graph.
 
 #### Ellipsis or elisions
 
