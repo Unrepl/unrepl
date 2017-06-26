@@ -61,13 +61,14 @@ To be more precise it's a stream of 2/3-item tuples, e.g. `[:read {:some :payloa
 2. Second component is the payload.
 3. Third (optional) component is a group id, meant to group together messages.
 
-Eight core tags are defined: `:unrepl/hello`, `:bye`, `:prompt`, `:started-eval`, `:eval`, `:out`, `:err` and `:exception`. More tags are defined in standard [actions](#actions).
+Ten core tags are defined: `:unrepl/hello`, `:bye`, `:prompt`, `:read`, `:started-eval`, `:eval`, `:out`, `:err`, `:log`, and `:exception`. More tags are defined in standard [actions](#actions).
 
 | Tag | Payload |
 |-----|---------|
 |`:unrepl/hello`|A map or nil|
 |`:bye`|A map or nil|
 |`:prompt`|A map or nil|
+|`:read` | A map |
 |`:started-eval`|A map or nil|
 |`:eval`|The evaluation result|
 |`:out`|A string|
