@@ -100,6 +100,10 @@
 (extend-protocol DefaultEdnize
   clojure.lang.TaggedLiteral (default-ednize [x] x)
   clojure.lang.Ratio (default-ednize [^clojure.lang.Ratio x] (tagged-literal 'unrepl/ratio [(.numerator x) (.denominator x)]))
+  clojure.lang.Var (default-ednize [x]
+                     (tagged-literal 'clojure/var
+                       (when-some [ns (:ns (meta x))] ; nil when local var
+                         (symbol (name (ns-name ns)) (name (:name (meta x)))))))
   Throwable (default-ednize [t] (tagged-literal 'error (Throwable->map t)))
   Class (default-ednize [x] (tagged-literal 'unrepl.java/class (class-form x)))
   java.util.Date (default-ednize [x] (as-inst x))
