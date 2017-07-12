@@ -39,7 +39,40 @@ Parts of this specification assumes two REPLs: the main (or user) REPL and the c
 
 ## Usage
 
-`lein run -m unrepl.repl/start` at the command line or `(unrepl.repl/start)` to start an unrepl inside a regular repl.
+##### Leiningen
+
+```clojure
+:profiles {:dev {:dependencies [[net.cgrand/unrepl "X.Y.Z"]]}})
+```
+
+Then `lein run -m unrepl.repl/start` at the command line or `(unrepl.repl/start)` to start an unrepl inside a `lein repl` regular repl.
+
+##### Boot
+
+```clojure
+(set-env!
+ :dependencies '[...other deps...
+                 [net.cgrand/unrepl "X.Y.Z"]])
+ 
+boot -i "(do (require 'clojure.core.server) (clojure.core.server/start-server {:name :repl :accept 'clojure.core.server/repl}))" wait
+```
+
+Or if you have `boot >= 2.7.2-SNAPSHOT`:
+
+```clojure
+boot socket-server --accept clojure.core.server/repl wait
+```
+
+Then:
+
+```
+$ nc localhost $PORT
+user=> (require 'unrepl.repl)
+nil
+user=> (unrepl.repl/start)
+...
+```
+
 
 ## Spec
 
