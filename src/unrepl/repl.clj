@@ -3,18 +3,23 @@
     [unrepl.print :as p]
     [clojure.java.io :as io]))
 
-(defn classloader [parent f]
+(defn classloader
+  "Creates a classloader that obey standard delegating policy.
+   Takes two arguments: a parent classloader and a function which
+   takes a keyword (:resource or :class) and a string (a resource or a class name) and returns an array of bytes
+   or nil."
+  [parent f]
   (let [define-class (doto (.getDeclaredMethod ClassLoader "defineClass" (into-array [String (Class/forName "[B") Integer/TYPE Integer/TYPE]))
                        (.setAccessible true))]
     (proxy [ClassLoader] [parent]
       (findResource [name]
-        (when-some  [bytes (f name)]
+        (when-some  [bytes (f :resource name)]
           (let [file (doto (java.io.File/createTempFile "unrepl-sideload-" (str "-" (re-find #"[^/]*$" name)))
                        .deleteOnExit)]
             (io/copy bytes file)
             (-> file .toURI .toURL))))
       (findClass [name]
-        (if-some  [bytes (f name)]
+        (if-some  [bytes (f :class name)]
           (.invoke define-class this (to-array name bytes 0 (count bytes)))
           (throw (ClassNotFoundException. name)))))))
 
