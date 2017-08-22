@@ -1,6 +1,22 @@
 (ns unrepl.repl
   (:require [clojure.main :as m]
-    [unrepl.print :as p]))
+    [unrepl.print :as p]
+    [clojure.java.io :as io]))
+
+(defn classloader [parent f]
+  (let [define-class (doto (.getDeclaredMethod ClassLoader "defineClass" (into-array [String (Class/forName "[B") Integer/TYPE Integer/TYPE]))
+                       (.setAccessible true))]
+    (proxy [ClassLoader] [parent]
+      (findResource [name]
+        (when-some  [bytes (f name)]
+          (let [file (doto (java.io.File/createTempFile "unrepl-sideload-" (str "-" (re-find #"[^/]*$" name)))
+                       .deleteOnExit)]
+            (io/copy bytes file)
+            (-> file .toURI .toURL))))
+      (findClass [name]
+        (if-some  [bytes (f name)]
+          (.invoke define-class this (to-array name bytes 0 (count bytes)))
+          (throw (ClassNotFoundException. name)))))))
 
 (defn tagging-writer
   ([write]
