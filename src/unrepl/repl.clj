@@ -249,7 +249,7 @@
           (binding [*out* out]
             (prn [k name])
             (some-> (edn/read {:eof nil} in) base64-decode))))))
-  (Thread/sleep 1000000))
+  (let [o (Object.)] (locking o (.wait o))))
 
 (defn set-file-line-col [session-id file line col]
   (when-some [^java.lang.reflect.Field field 
