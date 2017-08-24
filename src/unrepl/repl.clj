@@ -1,6 +1,7 @@
 (ns unrepl.repl
   (:require [clojure.main :as m]
     [unrepl.print :as p]
+    [clojure.edn :as edn]
     [clojure.java.io :as io]))
 
 (defn classloader
@@ -147,7 +148,7 @@
               (if (= NULL x) nil x)
               not-found))}))
 
-(defn- base64-str [^java.io.InputStream in]
+(defn- base64-encode [^java.io.InputStream in]
   (let [table "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
         sb (StringBuilder.)]
     (loop [shift 4 buf 0]
@@ -170,6 +171,22 @@
                   (.append sb (.charAt table (bit-and buf 63)))
                   (recur 4 0))
                 (recur shift (bit-shift-left buf 6))))))))))
+
+(defn- base64-decode [^String s]
+  (let [table "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        in (java.io.StringReader. s)
+        bos (java.io.ByteArrayOutputStream.)]
+    (loop [bits 0 buf 0]
+      (let [got (.read in)]
+        (when-not (or (neg? got) (= 61 #_\= got))
+          (let [buf (bit-or (.indexOf table got) (bit-shift-left buf 6))
+                bits (+ bits 6)]
+            (if (<= 8 bits)
+              (let [bits (- bits 8)]
+                (.write bos (bit-shift-right buf bits))
+                (recur bits (bit-and 63 buf)))
+              (recur bits buf))))))
+    (.toByteArray bos)))
 
 (defonce ^:private sessions (atom {}))
 
@@ -223,6 +240,17 @@
                       *print-readably* true]
               (prn x))))))))
 
+(defn attach-sideloader! [session-id]
+  (some-> session-id session :side-loader 
+    (reset!
+      (let [out *out*
+            in *in*]
+        (fn [k name]
+          (binding [*out* out]
+            (prn [k name])
+            (some-> (edn/read {:eof nil} in) base64-decode))))))
+  (Thread/sleep 1000000))
+
 (defn set-file-line-col [session-id file line col]
   (when-some [^java.lang.reflect.Field field 
               (->> clojure.lang.LineNumberingPushbackReader
@@ -262,6 +290,7 @@
                                              (write [:log msg @eval-id])))
                                :log-all (fn [msg]
                                           (write [:log msg nil]))
+                               :side-loader (atom nil)
                                :prompt-vars #{#'*ns* #'*warn-on-reflection*}})
           current-eval-thread+promise (atom nil)
           ensure-unrepl (fn []
@@ -282,7 +311,9 @@
                                                                   (set-file-line-col ~session-id
                                                                    ~(tagged-literal 'unrepl/param :unrepl/sourcename)
                                                                    ~(tagged-literal 'unrepl/param :unrepl/line)
-                                                                   ~(tagged-literal 'unrepl/param :unrepl/column)))}}]))))
+                                                                   ~(tagged-literal 'unrepl/param :unrepl/column)))
+                                                               :unrepl.jvm/start-side-loader
+                                                               `(attach-sideloader! ~session-id)}}]))))
           
           interruptible-eval
           (fn [form]
@@ -317,7 +348,12 @@
                     (throw ex)
                     eval)))
               (finally
-                (swap! session-state assoc :current-eval {}))))]
+                (swap! session-state assoc :current-eval {}))))
+          cl (.getContextClassLoader (Thread/currentThread))
+          slcl (classloader cl 
+                 (fn [k x]
+                   (when-some [f (some-> session-state deref :side-loader deref)]
+                     (f k x))))]
       (swap! sessions assoc session-id session-state)
       (binding [*out* raw-out
                 *err* (tagging-writer :err write)
@@ -327,50 +363,55 @@
                 p/*elide* (:put elision-store)
                 p/*attach* (:put attachment-store)
                 write write-here]
-        (m/repl
-          :prompt (fn []
-                    (ensure-unrepl)
-                    (write [:prompt (into {:file *file*
-                                           :line (.getLineNumber *in*)
-                                           :column (.getColumnNumber *in*)
-                                           :offset (:offset *in*)}
-                                      (map (fn [v]
-                                             (let [m (meta v)]
-                                               [(symbol (name (ns-name (:ns m))) (name (:name m))) @v])))
-                                      (:prompt-vars @session-state))]))
-          :read (fn [request-prompt request-exit]
-                  (blame :read (let [line+col [(.getLineNumber *in*) (.getColumnNumber *in*)]
-                                     offset (:offset *in*)
-                                     r (m/repl-read request-prompt request-exit)
-                                     line+col' [(.getLineNumber *in*) (.getColumnNumber *in*)]
-                                     offset' (:offset *in*)
-                                     len (- offset' offset)
-                                     id (when-not (#{request-prompt request-exit} r)
-                                          (var-set eval-id (inc @eval-id)))]
-                                 (write [:read {:from line+col :to line+col'
-                                                :offset offset
-                                                :len (- offset' offset)}
-                                         id])
-                                 (if (and (seq?  r) (= (first r) 'unrepl/do))
-                                   (let [id @eval-id]
-                                     (binding [*err* (tagging-writer :err id write)
-                                               *out* (tagging-writer :out id write)]
-                                       (eval (cons 'do (next r))))
-                                     request-prompt)
-                                   r))))
-          :eval (fn [form]
-                  (let [id @eval-id]
-                    (binding [*err* (tagging-writer :err id write)
-                              *out* (tagging-writer :out id write)]
-                      (interruptible-eval form))))
-          :print (fn [x]
-                   (ensure-unrepl)
-                   (write [:eval x @eval-id]))
-          :caught (fn [e]
-                    (ensure-unrepl)
-                    (let [{:keys [::ex ::phase]
-                           :or {ex e phase :repl}} (ex-data e)]
-                      (write [:exception {:ex e :phase phase} @eval-id]))))
+        (.setContextClassLoader (Thread/currentThread) slcl)
+        (with-bindings {clojure.lang.Compiler/LOADER slcl}
+          (try
+            (m/repl
+              :prompt (fn []
+                        (ensure-unrepl)
+                        (write [:prompt (into {:file *file*
+                                               :line (.getLineNumber *in*)
+                                               :column (.getColumnNumber *in*)
+                                               :offset (:offset *in*)}
+                                          (map (fn [v]
+                                                 (let [m (meta v)]
+                                                   [(symbol (name (ns-name (:ns m))) (name (:name m))) @v])))
+                                          (:prompt-vars @session-state))]))
+             :read (fn [request-prompt request-exit]
+                     (blame :read (let [line+col [(.getLineNumber *in*) (.getColumnNumber *in*)]
+                                        offset (:offset *in*)
+                                        r (m/repl-read request-prompt request-exit)
+                                        line+col' [(.getLineNumber *in*) (.getColumnNumber *in*)]
+                                        offset' (:offset *in*)
+                                        len (- offset' offset)
+                                        id (when-not (#{request-prompt request-exit} r)
+                                             (var-set eval-id (inc @eval-id)))]
+                                    (write [:read {:from line+col :to line+col'
+                                                   :offset offset
+                                                   :len (- offset' offset)}
+                                            id])
+                                    (if (and (seq?  r) (= (first r) 'unrepl/do))
+                                      (let [id @eval-id]
+                                        (binding [*err* (tagging-writer :err id write)
+                                                  *out* (tagging-writer :out id write)]
+                                          (eval (cons 'do (next r))))
+                                        request-prompt)
+                                      r))))
+             :eval (fn [form]
+                     (let [id @eval-id]
+                       (binding [*err* (tagging-writer :err id write)
+                                 *out* (tagging-writer :out id write)]
+                         (interruptible-eval form))))
+             :print (fn [x]
+                      (ensure-unrepl)
+                      (write [:eval x @eval-id]))
+             :caught (fn [e]
+                       (ensure-unrepl)
+                       (let [{:keys [::ex ::phase]
+                              :or {ex e phase :repl}} (ex-data e)]
+                         (write [:exception {:ex e :phase phase} @eval-id]))))
+           (finally
+             (.setContextClassLoader (Thread/currentThread) cl))))
         (write [:bye {:reason :disconnection
                       :outs :muted
                       :actions {:reattach-outs `(reattach-outs! ~session-id)}}])))))

@@ -327,7 +327,7 @@ When a sideloading session is started, the JVM will ask the client for classes o
 
 A sideloading session is a very simple edn-protocol.
 
-It starts by `[:unrepl.jvm/sideloader]` preamble and a then a serie of request/responses initiatted by the server: the client waits for messages `[:find-resource "resource/name"]` or `[:find-class "some.class.name"]` and replies either `nil` or a base64-encoded string representation of the file.
+It's a sequence of request/responses initiated by the server: the client waits for messages `[:resource "resource/name"]` or `[:class "some.class.name"]` and replies either `nil` or a base64-encoded string representation of the file.
 
 The only way to terminate a sideloading session is to close the connection.
 
