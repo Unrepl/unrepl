@@ -245,10 +245,11 @@
     (reset!
       (let [out *out*
             in *in*]
-        (fn [k name]
+        (fn self [k name]
           (binding [*out* out]
-            (prn [k name])
-            (some-> (edn/read {:eof nil} in) base64-decode))))))
+            (locking self
+              (prn [k name])
+              (some-> (edn/read {:eof nil} in) base64-decode)))))))
   (let [o (Object.)] (locking o (.wait o))))
 
 (defn set-file-line-col [session-id file line col]
@@ -263,6 +264,18 @@
       (.setLineNumber in line)
       (.set field in (int col)))))
 
+(defn- writers-flushing-repo [max-latency-ms]
+  (let [writers (java.util.WeakHashMap.)
+        flush-them-all #(locking writers
+                          (doseq [^java.io.Writer w (.keySet writers)]
+                            (.flush w)))]
+    (.scheduleAtFixedRate
+      (java.util.concurrent.Executors/newScheduledThreadPool 1)
+      flush-them-all
+      max-latency-ms max-latency-ms java.util.concurrent.TimeUnit/MILLISECONDS)
+    (fn [w]
+      (locking writers (.put writers w nil)))))
+
 (defn start []
   (with-local-vars [in-eval false
                     unrepl false
@@ -273,7 +286,12 @@
           raw-out *out*
           aw (atom (atomic-write raw-out))
           write-here (fuse-write aw)
-          edn-out (tagging-writer :out write-here)
+          schedule-writer-flush! (writers-flushing-repo 50) ; 20 fps (flushes per second)
+          scheduled-writer (fn [& args]
+                             (-> (apply tagging-writer args)
+                               java.io.BufferedWriter.
+                               (doto schedule-writer-flush!)))
+          edn-out (scheduled-writer :out write-here)
           ensure-raw-repl (fn []
                             (when (and @in-eval @unrepl) ; reading from eval!
                               (var-set unrepl false)
@@ -393,14 +411,14 @@
                                     (if (and (seq?  r) (= (first r) 'unrepl/do))
                                       (let [id @eval-id]
                                         (binding [*err* (tagging-writer :err id write)
-                                                  *out* (tagging-writer :out id write)]
+                                                  *out* (scheduled-writer :out id write)]
                                           (eval (cons 'do (next r))))
                                         request-prompt)
                                       r))))
              :eval (fn [form]
                      (let [id @eval-id]
                        (binding [*err* (tagging-writer :err id write)
-                                 *out* (tagging-writer :out id write)]
+                                 *out* (scheduled-writer :out id write)]
                          (interruptible-eval form))))
              :print (fn [x]
                       (ensure-unrepl)
