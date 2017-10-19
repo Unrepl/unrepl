@@ -8,6 +8,8 @@
 
 (def ^:dynamic *attach* nil)
 
+(def ^:dynamic *string-length* 80)
+
 (defprotocol DefaultEdnize
   (default-ednize [x]))
 
@@ -188,13 +190,25 @@
       (do (write (str "#" (:tag x) " "))
         (case (:tag x)
           unrepl/... (binding ; don't elide the elision 
-                       [*print-length* Long/MAX_VALUE]
+                       [*print-length* Long/MAX_VALUE
+                        *print-level* Long/MAX_VALUE
+                        *string-length* Long/MAX_VALUE]
                        (print-on write (:form x) Long/MAX_VALUE))
           (recur write (:form x) rem-depth)))
       (or (map? x) (instance? ElidedKVs x)) (do (write "{") (print-kvs write x rem-depth) (write "}"))
       (vector? x) (do (write "[") (print-vs write x rem-depth) (write "]"))
       (seq? x) (do (write "(") (print-vs write x rem-depth) (write ")"))
       (set? x) (do (write "#{") (print-vs write x rem-depth) (write "}"))
+      (and (string? x) (> (count x) *string-length*))
+      (let [i (if (Character/isHighSurrogate (.charAt ^String x (dec *string-length*)))
+                *string-length* (dec *string-length*))
+            prefix (subs x 0 i)
+            rest (subs x i)]
+        (write "#unrepl/string [")
+        (write (as-str prefix))
+        (write " ")
+        (print-on write (tagged-literal 'unrepl/... (*elide* rest)) rem-depth)
+        (write "]"))
       (atomic? x) (write (as-str x))
       :else (throw (ex-info "Can't print value." {:value x})))))
 

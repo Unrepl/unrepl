@@ -255,6 +255,9 @@ So continuing the `(range)` example:
 < (10 11 12 13 14 15 16 17 18 19 #unrepl/... {:get (tmp1234/get :G__8404)})
 ```
 
+##### Long strings
+Strings too long should be cut off by the printer. In which case `#unrepl/string [prefix #unrepl/... m]` is emitted with prefix being an actual prefix of the cut off repl with the following restriction: the cut can't occur in the middle of a surrogate pair; this restriction only holds for well-formed strings.
+
 ##### Caveats
 ###### Padding maps
 Elided maps representations must still have an even number of entries, so a second elision marker `#unrepl/... nil` is added to pad the representation. All data (if any) is supported by the elision in key position. When splicing the expansion both markers are replaced.

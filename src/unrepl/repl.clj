@@ -197,6 +197,7 @@
     (cond
       (= unreachable x) x
       (instance? unrepl.print.ElidedKVs x) x
+      (string? x) x
       :else (seq x))))
 
 (defonce ^:private attachment-store (weak-store #(list `download %) (constantly nil)))
