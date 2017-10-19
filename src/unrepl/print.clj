@@ -201,14 +201,17 @@
       (set? x) (do (write "#{") (print-vs write x rem-depth) (write "}"))
       (and (string? x) (> (count x) *string-length*))
       (let [i (if (Character/isHighSurrogate (.charAt ^String x (dec *string-length*)))
-                *string-length* (dec *string-length*))
+                (inc *string-length*) *string-length*)
             prefix (subs x 0 i)
             rest (subs x i)]
-        (write "#unrepl/string [")
-        (write (as-str prefix))
-        (write " ")
-        (print-on write (tagged-literal 'unrepl/... (*elide* rest)) rem-depth)
-        (write "]"))
+        (if (= rest "")
+          (write (as-str x))
+          (do
+            (write "#unrepl/string [")
+            (write (as-str prefix))
+            (write " ")
+            (print-on write (tagged-literal 'unrepl/... (*elide* rest)) rem-depth)
+            (write "]"))))
       (atomic? x) (write (as-str x))
       :else (throw (ex-info "Can't print value." {:value x})))))
 
