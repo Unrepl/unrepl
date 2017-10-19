@@ -200,7 +200,8 @@
       (seq? x) (do (write "(") (print-vs write x rem-depth) (write ")"))
       (set? x) (do (write "#{") (print-vs write x rem-depth) (write "}"))
       (and (string? x) (> (count x) *string-length*))
-      (let [i (if (Character/isHighSurrogate (.charAt ^String x (dec *string-length*)))
+      (let [i (if (and (Character/isHighSurrogate (.charAt ^String x (dec *string-length*)))
+                    (Character/isLowSurrogate (.charAt ^String x *string-length*)))
                 (inc *string-length*) *string-length*)
             prefix (subs x 0 i)
             rest (subs x i)]
