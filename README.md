@@ -322,6 +322,10 @@ Three parameters:
 
 Sets the filename, line and column numbers for subsequent evaluations. The change will take effect at next prompt display.
 
+##### `:print-limits`
+
+Set print limits (pass `nil` to leave a limit unchanged). Returns a map of param names to original values.
+
 ##### `:start-aux`
 
 Upgrades another connection as an auxilliary (for tooling purpose) unREPL session.

@@ -318,7 +318,8 @@
                             (flush)
                             (set! *out* edn-out)
                             (binding [*print-length* Long/MAX_VALUE
-                                      *print-level* Long/MAX_VALUE]
+                                      *print-level* Long/MAX_VALUE
+                                      p/*string-length* Long/MAX_VALUE]
                               (write [:unrepl/hello {:session session-id
                                                      :actions {:exit `(exit! ~session-id)
                                                                :start-aux `(start-aux ~session-id)
@@ -326,6 +327,14 @@
                                                                `(some-> ~session-id session :log-eval)
                                                                :log-all
                                                                `(some-> ~session-id session :log-all)
+                                                               :print-limits
+                                                               `(let [bak# {:unrepl.print/string-length p/*string-length*
+                                                                            :unrepl.print/coll-length *print-length*
+                                                                            :unrepl.print/nesting-depth *print-level*}]
+                                                                  (some->> ~(tagged-literal 'unrepl/param :unrepl.print/string-length) (set! p/*string-length*))
+                                                                  (some->> ~(tagged-literal 'unrepl/param :unrepl.print/coll-length) (set! *print-length*))
+                                                                  (some->> ~(tagged-literal 'unrepl/param :unrepl.print/nesting-depth) (set! *print-level*))
+                                                                  bak#)
                                                                :set-source
                                                                `(unrepl/do
                                                                   (set-file-line-col ~session-id
@@ -383,6 +392,7 @@
                 *source-path* "unrepl-session"
                 p/*elide* (:put elision-store)
                 p/*attach* (:put attachment-store)
+                p/*string-length* p/*string-length* 
                 write write-here]
         (.setContextClassLoader (Thread/currentThread) slcl)
         (with-bindings {clojure.lang.Compiler/LOADER slcl}
