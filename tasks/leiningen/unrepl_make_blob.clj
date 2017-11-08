@@ -7,7 +7,7 @@
     (spit "resources/unrepl/blob.clj"
       (prn-str
         `(let [prefix# (name (gensym))
-             code# (.replaceAll ~code "unrepl\\.(?:repl|print)" (str "$0" prefix#))
+             code# (.replaceAll ~code "(?<!:)unrepl\\.(?:repl|print)" (str "$0" prefix#))
              rdr# (-> code# java.io.StringReader. clojure.lang.LineNumberingPushbackReader.)]
          (try
            (binding [*ns* *ns*]
