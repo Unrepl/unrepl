@@ -322,6 +322,10 @@ Three parameters:
 
 Sets the filename, line and column numbers for subsequent evaluations. The change will take effect at next prompt display.
 
+##### `:start-aux`
+
+Upgrades another connection as an auxilliary (for tooling purpose) unREPL session.
+
 ##### `:unrepl.jvm/start-side-loader`
 
 Upgrades the control REPL where it is issued to a sideloading session.

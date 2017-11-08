@@ -321,6 +321,7 @@
                                       *print-level* Long/MAX_VALUE]
                               (write [:unrepl/hello {:session session-id
                                                      :actions {:exit `(exit! ~session-id)
+                                                               :start-aux `(start-aux ~session-id)
                                                                :log-eval
                                                                `(some-> ~session-id session :log-eval)
                                                                :log-all
@@ -369,10 +370,11 @@
               (finally
                 (swap! session-state assoc :current-eval {}))))
           cl (.getContextClassLoader (Thread/currentThread))
-          slcl (classloader cl 
+          slcl (classloader cl
                  (fn [k x]
                    (when-some [f (some-> session-state deref :side-loader deref)]
                      (f k x))))]
+      (swap! session-state assoc :class-loader slcl)
       (swap! sessions assoc session-id session-state)
       (binding [*out* raw-out
                 *err* (tagging-writer :err write)
@@ -434,3 +436,11 @@
         (write [:bye {:reason :disconnection
                       :outs :muted
                       :actions {:reattach-outs `(reattach-outs! ~session-id)}}])))))
+
+(defn start-aux [session-id]
+  (let [cl (.getContextClassLoader (Thread/currentThread))]
+    (try
+        (some->> session-id session :class-loader (.setContextClassLoader (Thread/currentThread)))
+        (start)
+        (finally
+          (.setContextClassLoader (Thread/currentThread) cl)))))
