@@ -125,26 +125,26 @@
                     (some #(when (#{"in" "sd"} (.getName ^java.lang.reflect.Field %)) %)))]
         (recur (.get (doto field (.setAccessible true)) x))))))
 
-(defn weak-store [make-action not-found]
-  (let [ids-to-weakrefs (atom {})
-        weakrefs-to-ids (atom {})
+(defn soft-store [make-action not-found]
+  (let [ids-to-refs (atom {})
+        refs-to-ids (atom {})
         refq (java.lang.ref.ReferenceQueue.)
         NULL (Object.)]
     (.start (Thread. (fn []
-                       (let [wref (.remove refq)]
-                         (let [id (@weakrefs-to-ids wref)]
-                           (swap! weakrefs-to-ids dissoc wref)
-                           (swap! ids-to-weakrefs dissoc id)))
+                       (let [ref (.remove refq)]
+                         (let [id (@refs-to-ids ref)]
+                           (swap! refs-to-ids dissoc ref)
+                           (swap! ids-to-refs dissoc id)))
                            (recur))))
     {:put (fn [x]
             (let [x (if (nil? x) NULL x)
                   id (keyword (gensym))
-                  wref (java.lang.ref.WeakReference. x refq)]
-              (swap! weakrefs-to-ids assoc wref id)
-              (swap! ids-to-weakrefs assoc id wref)
+                  ref (java.lang.ref.SoftReference. x refq)]
+              (swap! refs-to-ids assoc ref id)
+              (swap! ids-to-refs assoc id ref)
               {:get (make-action id)}))
      :get (fn [id]
-            (if-some [x (some-> @ids-to-weakrefs ^java.lang.ref.WeakReference (get id) .get)]
+            (if-some [x (some-> @ids-to-refs ^java.lang.ref.Reference (get id) .get)]
               (if (= NULL x) nil x)
               not-found))}))
 
@@ -191,7 +191,7 @@
 (defonce ^:private sessions (atom {}))
 
 (def ^:private unreachable (tagged-literal 'unrepl/... nil))
-(defonce ^:private elision-store (weak-store #(list `fetch %) unreachable))
+(defonce ^:private elision-store (soft-store #(list `fetch %) unreachable))
 (defn fetch [id] 
   (let [x ((:get elision-store) id)]
     (cond
@@ -200,7 +200,7 @@
       (string? x) x
       :else (seq x))))
 
-(defonce ^:private attachment-store (weak-store #(list `download %) (constantly nil)))
+(defonce ^:private attachment-store (soft-store #(list `download %) (constantly nil)))
 (defn download [id] ((:get attachment-store) id))
 
 (defn session [id]
