@@ -24,7 +24,7 @@
           (.invoke define-class this (to-array name bytes 0 (count bytes)))
           (throw (ClassNotFoundException. name)))))))
 
-(defn tagging-writer
+(defn ^java.io.Writer tagging-writer
   ([write]
     (proxy [java.io.Writer] []
       (close []) ; do not cascade
@@ -278,6 +278,12 @@
     (fn [w]
       (locking writers (.put writers w nil)))))
 
+(defmacro ^:private flushing [bindings & body]
+  `(binding ~bindings
+     (try ~@body
+       (finally ~@(for [v (take-nth 2 bindings)]
+                    `(.flush ~(vary-meta v assoc :tag 'java.io.Writer)))))))
+
 (defn start []
   (with-local-vars [in-eval false
                     unrepl false
@@ -424,15 +430,15 @@
                                             id])
                                     (if (and (seq?  r) (= (first r) 'unrepl/do))
                                       (let [id @eval-id]
-                                        (binding [*err* (tagging-writer :err id write)
-                                                  *out* (scheduled-writer :out id write)]
+                                        (flushing [*err* (tagging-writer :err id write)
+                                                   *out* (scheduled-writer :out id write)]
                                           (eval (cons 'do (next r))))
                                         request-prompt)
                                       r))))
              :eval (fn [form]
                      (let [id @eval-id]
-                       (binding [*err* (tagging-writer :err id write)
-                                 *out* (scheduled-writer :out id write)]
+                       (flushing [*err* (tagging-writer :err id write)
+                                  *out* (scheduled-writer :out id write)]
                          (interruptible-eval form))))
              :print (fn [x]
                       (ensure-unrepl)
