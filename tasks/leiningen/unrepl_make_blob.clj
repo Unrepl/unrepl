@@ -2,7 +2,7 @@
   (:require [clojure.java.io :as io]))
 
 (defn unrepl-make-blob [project]
-  (let [code (str (slurp "src/unrepl/print.clj") (slurp "src/unrepl/repl.clj") "\n(unrepl.repl/start)")]
+  (let [code (str (slurp "src/unrepl/print.clj") (slurp "src/unrepl/repl.clj") "\n(ns user)\n(unrepl.repl/start)")]
     (-> "resources/unrepl" java.io.File. .mkdirs)
     (spit "resources/unrepl/blob.clj"
       (prn-str
