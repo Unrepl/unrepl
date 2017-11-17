@@ -242,7 +242,7 @@
               (prn x))))))))
 
 (defn attach-sideloader! [session-id]
-  (prn '[unrepl.jvm.side-loader/hello])
+  (prn '[:unrepl.jvm.side-loader/hello])
   (some-> session-id session :side-loader 
     (reset!
       (let [out *out*
