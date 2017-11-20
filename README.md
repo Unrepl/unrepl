@@ -8,14 +8,13 @@ An unrepl repl is just a REPL with a fancy printer.
 
 ## Status
 
-This document is a work in progress. A companion implementation is available in the `unrepl.repl` namespace.
-
-The output (edn messages) & input specification ([message templates](#message-templates)) is mostly done. What is left to specify is:
-
- * more standard (but optional) actions
- * some parameters.
+This document is a work in progress but is mostly stable at this point (few breakings change to expect). A companion implementation is available in the `unrepl.repl` namespace.
 
 You can ask questions and share feedback on the `#unrepl` channel on the Clojurians Slack.
+
+## Clients
+
+There are two clients: [Unravel](https://github.com/Unrepl/unravel) a command-line client and [Unrepl.el](https://github.com/Unrepl/unrepl.el) an Emacs one.
 
 ## Background
 
@@ -39,40 +38,7 @@ Parts of this specification assumes two REPLs: the main (or user) REPL and the c
 
 ## Usage
 
-##### Leiningen
-
-```clojure
-:profiles {:dev {:dependencies [[net.cgrand/unrepl "X.Y.Z"]]}})
-```
-
-Then `lein run -m unrepl.repl/start` at the command line or `(unrepl.repl/start)` to start an unrepl inside a `lein repl` regular repl.
-
-##### Boot
-
-```clojure
-(set-env!
- :dependencies '[...other deps...
-                 [net.cgrand/unrepl "X.Y.Z"]])
- 
-boot -i "(do (require 'clojure.core.server) (clojure.core.server/start-server {:name :repl :accept 'clojure.core.server/repl}))" wait
-```
-
-Or if you have `boot >= 2.7.2-SNAPSHOT`:
-
-```clojure
-boot socket-server --accept clojure.core.server/repl wait
-```
-
-Then:
-
-```
-$ nc localhost $PORT
-user=> (require 'unrepl.repl)
-nil
-user=> (unrepl.repl/start)
-...
-```
-
+Users don't need to care about unrepl, not even add it to their project deps. Just use [nice clients](#clients).
 
 ## Spec
 
