@@ -328,28 +328,30 @@
                                       *print-level* Long/MAX_VALUE
                                       p/*string-length* Long/MAX_VALUE]
                               (write [:unrepl/hello {:session session-id
-                                                     :actions {:exit `(exit! ~session-id)
-                                                               :start-aux `(start-aux ~session-id)
-                                                               :log-eval
-                                                               `(some-> ~session-id session :log-eval)
-                                                               :log-all
-                                                               `(some-> ~session-id session :log-all)
-                                                               :print-limits
-                                                               `(let [bak# {:unrepl.print/string-length p/*string-length*
-                                                                            :unrepl.print/coll-length *print-length*
-                                                                            :unrepl.print/nesting-depth *print-level*}]
-                                                                  (some->> ~(tagged-literal 'unrepl/param :unrepl.print/string-length) (set! p/*string-length*))
-                                                                  (some->> ~(tagged-literal 'unrepl/param :unrepl.print/coll-length) (set! *print-length*))
-                                                                  (some->> ~(tagged-literal 'unrepl/param :unrepl.print/nesting-depth) (set! *print-level*))
-                                                                  bak#)
-                                                               :set-source
-                                                               `(unrepl/do
-                                                                  (set-file-line-col ~session-id
-                                                                   ~(tagged-literal 'unrepl/param :unrepl/sourcename)
-                                                                   ~(tagged-literal 'unrepl/param :unrepl/line)
-                                                                   ~(tagged-literal 'unrepl/param :unrepl/column)))
-                                                               :unrepl.jvm/start-side-loader
-                                                               `(attach-sideloader! ~session-id)}}]))))
+                                                     :actions (into
+                                                                {:exit `(exit! ~session-id)
+                                                                 :start-aux `(start-aux ~session-id)
+                                                                 :log-eval
+                                                                 `(some-> ~session-id session :log-eval)
+                                                                 :log-all
+                                                                 `(some-> ~session-id session :log-all)
+                                                                 :print-limits
+                                                                 `(let [bak# {:unrepl.print/string-length p/*string-length*
+                                                                              :unrepl.print/coll-length *print-length*
+                                                                              :unrepl.print/nesting-depth *print-level*}]
+                                                                    (some->> ~(tagged-literal 'unrepl/param :unrepl.print/string-length) (set! p/*string-length*))
+                                                                    (some->> ~(tagged-literal 'unrepl/param :unrepl.print/coll-length) (set! *print-length*))
+                                                                    (some->> ~(tagged-literal 'unrepl/param :unrepl.print/nesting-depth) (set! *print-level*))
+                                                                    bak#)
+                                                                 :set-source
+                                                                 `(unrepl/do
+                                                                    (set-file-line-col ~session-id
+                                                                      ~(tagged-literal 'unrepl/param :unrepl/sourcename)
+                                                                      ~(tagged-literal 'unrepl/param :unrepl/line)
+                                                                      ~(tagged-literal 'unrepl/param :unrepl/column)))
+                                                                 :unrepl.jvm/start-side-loader
+                                                                 `(attach-sideloader! ~session-id)}
+                                                                #_ext-session-actions)}]))))
           
           interruptible-eval
           (fn [form]
@@ -461,3 +463,10 @@
         (start)
         (finally
           (.setContextClassLoader (Thread/currentThread) cl)))))
+
+;; WIP for extensions
+
+(defmacro ensure-ns [[fully-qualified-var-name & args :as expr]]
+  `(do
+     (require '~(symbol (namespace fully-qualified-var-name)))
+     ~expr))

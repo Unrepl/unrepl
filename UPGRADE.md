@@ -7,3 +7,5 @@ Once you have a connection to a REPL, you send the content of the resource file 
 Either you get `[:unrepl.upgrade/failed]` or `[:unrepl/hello ...]` on the repl output. Upon failure you are back in the repl you started from.
 
 Each use of the blob creates gensymed namespaces.
+
+You can customize the blob: enter `lein unrepl-make-blob target-file '{...here goes custom session actions..}'`. Actions who have a qualified symbol as first in topmost function position will automatically require this namespace on first use.  
