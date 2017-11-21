@@ -1,6 +1,7 @@
 (ns unrepl.print
   (:require [clojure.string :as str]
-    [clojure.edn :as edn]))
+    [clojure.edn :as edn]
+    [clojure.main :as main]))
 
 (def ^:dynamic *elide*
   "Function of 1 argument which returns the elision."
@@ -63,6 +64,12 @@
                     pending? :pending
                     :else :ready)]
        {:unrepl.ref/status status :unrepl.ref/val val}))
+   
+   clojure.lang.AFn
+   (fn [x]
+     (let [[_ ns name] (re-matches #"(?:(.+?)/)?(.*)" (-> x class .getName main/demunge))]
+       ; the regex ensure the first group is nil when no ns
+       (symbol ns name)))
    
    java.io.File (fn [^java.io.File f]
                   (into {:path (.getPath f)}
