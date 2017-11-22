@@ -10,7 +10,8 @@
              code# (.replaceAll ~code "(?<!:)unrepl\\.(?:repl|print)" (str "$0" prefix#))
              rdr# (-> code# java.io.StringReader. clojure.lang.LineNumberingPushbackReader.)]
          (try
-           (binding [*ns* *ns*]
+           (binding [*ns* *ns*
+                     *default-data-reader-fn* tagged-literal]
              (loop [ret# nil]
                (let [form# (read rdr# false 'eof#)]
                  (if (= 'eof# form#)
