@@ -8,4 +8,13 @@ Either you get `[:unrepl.upgrade/failed]` or `[:unrepl/hello ...]` on the repl o
 
 Each use of the blob creates gensymed namespaces.
 
-You can customize the blob: enter `lein unrepl-make-blob target-file '{...here goes custom session actions..}'`. Actions who have a qualified symbol as first in topmost function position will automatically require this namespace on first use.  
+You can customize the blob: enter `lein unrepl-make-blob <target-file> <session actions map>`. Where the session actions map can be either a string or a `.edn` file. For example:
+
+```
+# As a string
+$> lein unrepl-make-blob foo-blob.clj '{:my.own/action (foo/bar #unrepl/param :baz)}'
+# As a file
+$> lein unrepl-make-blob foo-blob.clj custom-actions.edn
+```
+
+If a custom action has a qualified symbol as the first element (function symbol) for its topmost form, this qualified symbol's namespace will automatically be required on the first use of the action.

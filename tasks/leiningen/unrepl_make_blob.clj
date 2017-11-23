@@ -24,7 +24,8 @@
 (defn unrepl-make-blob
   ([project] (unrepl-make-blob project "resources/unrepl/blob.clj" "{}"))
   ([project target session-actions]
-    (let [session-actions-map (edn/read-string {:default (fn [tag data] (tagged-literal 'unrepl-make-blob-unquote (list 'tagged-literal (tagged-literal 'unrepl-make-blob-quote tag) data)))} session-actions)
+    (let [session-actions-source (if (clojure.string/ends-with? session-actions ".edn") (slurp session-actions) session-actions)
+          session-actions-map (edn/read-string {:default (fn [tag data] (tagged-literal 'unrepl-make-blob-unquote (list 'tagged-literal (tagged-literal 'unrepl-make-blob-quote tag) data)))} session-actions-source)
           code (str (slurp "src/unrepl/print.clj") (slurp "src/unrepl/repl.clj") "\n(ns user)\n(unrepl.repl/start)")]
       (if (map? session-actions-map)
         (let [session-actions-map (into session-actions-map
