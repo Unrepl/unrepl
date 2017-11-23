@@ -106,6 +106,8 @@
 (defn- class-form [^Class x]
   (if (.isArray x) [(-> x .getComponentType class-form)] (symbol (.getName x))))
 
+(def unreachable (tagged-literal 'unrepl/... nil))
+
 (extend-protocol DefaultEdnize
   clojure.lang.TaggedLiteral (default-ednize [x] x)
   clojure.lang.Ratio (default-ednize [^clojure.lang.Ratio x] (tagged-literal 'unrepl/ratio [(.numerator x) (.denominator x)]))
@@ -124,7 +126,7 @@
   (default-ednize [x]
     (tagged-literal 'unrepl/object
       [(class x) (format "0x%x" (System/identityHashCode x)) (object-representation x)
-       {:bean {(tagged-literal 'unrepl/... (*elide* (ElidedKVs. (bean x)))) (tagged-literal 'unrepl/... nil)}}])))
+       {:bean {unreachable (tagged-literal 'unrepl/... (*elide* (ElidedKVs. (bean x))))}}])))
 
 (defmacro ^:private blame-seq [& body]
   `(try (seq ~@body)
@@ -148,7 +150,7 @@
 
 (defn- elide-kvs [kvs print-length]
   (if-some [more-kvs (when print-length (seq (drop print-length kvs)))]
-    (concat (take print-length kvs) [[(tagged-literal 'unrepl/... (*elide* (ElidedKVs. more-kvs))) (tagged-literal 'unrepl/... nil)]])
+    (concat (take print-length kvs) [[unreachable (tagged-literal 'unrepl/... (*elide* (ElidedKVs. more-kvs)))]])
     kvs))
 
 (defn ednize "Shallow conversion to edn safe subset." 
@@ -202,7 +204,17 @@
                         *string-length* Long/MAX_VALUE]
                        (print-on write (:form x) Long/MAX_VALUE))
           (recur write (:form x) rem-depth)))
-      (or (map? x) (instance? ElidedKVs x)) (do (write "{") (print-kvs write x rem-depth) (write "}"))
+      (map? x) (let [elision (get x unreachable)
+                     x (dissoc x unreachable)]
+                 (write "{")
+                 (print-kvs write x rem-depth)
+                 (when elision
+                   (write ", ")
+                   (print-on write unreachable rem-depth)
+                   (write " ")
+                   (print-on write elision rem-depth))
+                 (write "}"))
+      (instance? ElidedKVs x) (do (write "{") (print-kvs write x rem-depth) (write "}"))
       (vector? x) (do (write "[") (print-vs write x rem-depth) (write "]"))
       (seq? x) (do (write "(") (print-vs write x rem-depth) (write ")"))
       (set? x) (do (write "#{") (print-vs write x rem-depth) (write "}"))

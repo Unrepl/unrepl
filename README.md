@@ -12,6 +12,10 @@ This document is a work in progress but is mostly stable at this point (few brea
 
 You can ask questions and share feedback on the `#unrepl` channel on the Clojurians Slack.
 
+## Breaking Changes
+
+2017-11-23: change in map elisions, now the key is always `#unrepl/... nil` and the value contains the actual elision.
+
 ## Clients
 
 There are two clients: [Unravel](https://github.com/Unrepl/unravel) a command-line client and [Unrepl.el](https://github.com/Unrepl/unrepl.el) an Emacs one.
@@ -225,8 +229,11 @@ So continuing the `(range)` example:
 Strings too long should be cut off by the printer. In which case `#unrepl/string [prefix #unrepl/... m]` is emitted with prefix being an actual prefix of the cut off repl with the following restriction: the cut can't occur in the middle of a surrogate pair; this restriction only holds for well-formed strings.
 
 ##### Caveats
+###### Position
+The elision should always be at the end of the collection.
+
 ###### Padding maps
-Elided maps representations must still have an even number of entries, so a second elision marker `#unrepl/... nil` is added to pad the representation. All data (if any) is supported by the elision in key position. When splicing the expansion both markers are replaced.
+Elided maps representations must still have an even number of entries, so a second elision marker `#unrepl/... nil` is added *as key* to pad the representation. All data (if any) is supported by the elision in value position. When splicing the expansion both markers are replaced.
 
 ###### Identity and value
 These maps may also have an `:id` key to keep elided values different when used in sets or as keys in maps. So either each elision get a unique id or the id may be value-based (that is: when two elisions ids are equal, their elided values are equal). When `:get` is provided there's no need for `:id` (because by definition the `:get` value will be unique or at least value-based).

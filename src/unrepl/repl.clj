@@ -190,12 +190,11 @@
 
 (defonce ^:private sessions (atom {}))
 
-(def ^:private unreachable (tagged-literal 'unrepl/... nil))
-(defonce ^:private elision-store (soft-store #(list `fetch %) unreachable))
+(defonce ^:private elision-store (soft-store #(list `fetch %) p/unreachable))
 (defn fetch [id] 
   (let [x ((:get elision-store) id)]
     (cond
-      (= unreachable x) x
+      (= p/unreachable x) x
       (instance? unrepl.print.ElidedKVs x) x
       (string? x) x
       :else (seq x))))
