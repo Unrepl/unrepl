@@ -108,13 +108,13 @@
 
 (def unreachable (tagged-literal 'unrepl/... nil))
 
-(def ^:private ^:dynamic *quoted* false)
+(def ^:dynamic *need-quote* false)
 (defn quoted? [x]
   (and (tagged-literal? x) (= 'unrepl/quote (:tag x))))
 
 (extend-protocol DefaultEdnize
   clojure.lang.TaggedLiteral (default-ednize [x]
-                               (if (when-not *quoted* (re-find #"^unrepl(?:\..+)?" (namespace (:tag x))))
+                               (if (and *need-quote* (re-find #"^unrepl(?:\..+)?" (namespace (:tag x))))
                                  (tagged-literal 'unrepl/quote x)
                                  x))
   clojure.lang.Ratio (default-ednize [^clojure.lang.Ratio x] (tagged-literal 'unrepl/ratio [(.numerator x) (.denominator x)]))
@@ -205,8 +205,8 @@
       (tagged-literal? x)
       (do
         (write (str "#" (:tag x) " "))
-        (case (when-not *quoted* (:tag x))
-          unrepl/quote (binding [*quoted* true]
+        (case (and *need-quote* (:tag x))
+          unrepl/quote (binding [*need-quote* false]
                          (print-on write (:form x) rem-depth))
           unrepl/... (binding ; don't elide the elision 
                        [*print-length* Long/MAX_VALUE
