@@ -267,12 +267,6 @@ Some values may print to `#unrepl/mime m` where m is a map with keys:
 - `:content` optional base64-encoded.
 - `:get` message template.
 
-#### Quoting
-
-When the data to be printed contains *as values* tagged-literals used by machine printing (e.g. all aboves at least), then they should be escaped using `#unrepl/quote` (which should itslef be escaped if it occurs as data).
-
-It's mostly a concern for dogfooding.
-
 ### Message Templates
 
 A message template is an executable description of the expected message. It's a parametrized edn form: all keywords tagged by `#unrepl/param` are to be substituted by their value. The resulting form is serialized as edn and sent to a repl.

@@ -108,15 +108,8 @@
 
 (def unreachable (tagged-literal 'unrepl/... nil))
 
-(def ^:private ^:dynamic *quoted* false)
-(defn quoted? [x]
-  (and (tagged-literal? x) (= 'unrepl/quote (:tag x))))
-
 (extend-protocol DefaultEdnize
-  clojure.lang.TaggedLiteral (default-ednize [x]
-                               (if (when-not *quoted* (re-find #"^unrepl(?:\..+)?" (namespace (:tag x))))
-                                 (tagged-literal 'unrepl/quote x)
-                                 x))
+  clojure.lang.TaggedLiteral (default-ednize [x] x)
   clojure.lang.Ratio (default-ednize [^clojure.lang.Ratio x] (tagged-literal 'unrepl/ratio [(.numerator x) (.denominator x)]))
   clojure.lang.Var (default-ednize [x]
                      (tagged-literal 'clojure/var
@@ -174,8 +167,8 @@
     (seq? x) (elide-vs x print-length)
     (set? x) (into #{} (elide-vs x print-length))
     :else (let [x' (*ednize* x)]
-            (if (or (= x x') (quoted? x'))
-              x'
+            (if (= x x')
+              x
               (recur x' print-length print-meta)))))) ; todo : cache
 
 (declare print-on)
@@ -203,11 +196,8 @@
         x (ednize x (if (neg? rem-depth) 0 *print-length*))]
     (cond
       (tagged-literal? x)
-      (do
-        (write (str "#" (:tag x) " "))
-        (case (when-not *quoted* (:tag x))
-          unrepl/quote (binding [*quoted* true]
-                         (print-on write (:form x) rem-depth))
+      (do (write (str "#" (:tag x) " "))
+        (case (:tag x)
           unrepl/... (binding ; don't elide the elision 
                        [*print-length* Long/MAX_VALUE
                         *print-level* Long/MAX_VALUE
