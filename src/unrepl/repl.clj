@@ -73,9 +73,6 @@
 
 (def ^:dynamic write)
 
-(defn quoted-write [x]
-  (binding [p/*need-quote* true] (write x)))
-
 (defn unrepl-reader [^java.io.Reader r before-read]
   (let [offset (atom 0)
         offset! #(swap! offset + %)]
@@ -268,15 +265,6 @@
       (.setLineNumber in line)
       (.set field in (int col)))))
 
-(defn get-set-print-limits [string-length coll-length nesting-depth]
-  (let [bak {:unrepl.print/string-length p/*string-length*
-             :unrepl.print/coll-length *print-length*
-             :unrepl.print/nesting-depth *print-level*}]
-    (some->> string-length (set! p/*string-length*))
-    (some->> coll-length (set! *print-length*))
-    (some->> nesting-depth (set! *print-level*))
-    bak))
-
 (defn- writers-flushing-repo [max-latency-ms]
   (let [writers (java.util.WeakHashMap.)
         flush-them-all #(locking writers
@@ -324,9 +312,9 @@
                                :write-atom aw
                                :log-eval (fn [msg]
                                            (when (bound? eval-id)
-                                             (quoted-write [:log msg @eval-id])))
+                                             (write [:log msg @eval-id])))
                                :log-all (fn [msg]
-                                          (quoted-write [:log msg nil]))
+                                          (write [:log msg nil]))
                                :side-loader (atom nil)
                                :prompt-vars #{#'*ns* #'*warn-on-reflection*}})
           current-eval-thread+promise (atom nil)
@@ -347,10 +335,13 @@
                                                                  :log-all
                                                                  `(some-> ~session-id session :log-all)
                                                                  :print-limits
-                                                                 `(unrepl/do
-                                                                    (get-set-print-limits ~(tagged-literal 'unrepl/param :unrepl.print/string-length)
-                                                                      ~(tagged-literal 'unrepl/param :unrepl.print/coll-length)
-                                                                      ~(tagged-literal 'unrepl/param :unrepl.print/nesting-depth)))
+                                                                 `(let [bak# {:unrepl.print/string-length p/*string-length*
+                                                                              :unrepl.print/coll-length *print-length*
+                                                                              :unrepl.print/nesting-depth *print-level*}]
+                                                                    (some->> ~(tagged-literal 'unrepl/param :unrepl.print/string-length) (set! p/*string-length*))
+                                                                    (some->> ~(tagged-literal 'unrepl/param :unrepl.print/coll-length) (set! *print-length*))
+                                                                    (some->> ~(tagged-literal 'unrepl/param :unrepl.print/nesting-depth) (set! *print-level*))
+                                                                    bak#)
                                                                  :set-source
                                                                  `(unrepl/do
                                                                     (set-file-line-col ~session-id
@@ -410,8 +401,6 @@
                 p/*elide* (:put elision-store)
                 p/*attach* (:put attachment-store)
                 p/*string-length* p/*string-length* 
-                *print-length* (or *print-length* 10)
-                *print-level* (or *print-level* 8) 
                 write write-here]
         (.setContextClassLoader (Thread/currentThread) slcl)
         (with-bindings {clojure.lang.Compiler/LOADER slcl}
@@ -454,12 +443,12 @@
                          (interruptible-eval form))))
              :print (fn [x]
                       (ensure-unrepl)
-                      (quoted-write [:eval x @eval-id]))
+                      (write [:eval x @eval-id]))
              :caught (fn [e]
                        (ensure-unrepl)
                        (let [{:keys [::ex ::phase]
                               :or {ex e phase :repl}} (ex-data e)]
-                         (quoted-write [:exception {:ex e :phase phase} @eval-id]))))
+                         (write [:exception {:ex e :phase phase} @eval-id]))))
            (finally
              (.setContextClassLoader (Thread/currentThread) cl))))
         (write [:bye {:reason :disconnection
