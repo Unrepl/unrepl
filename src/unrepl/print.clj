@@ -111,15 +111,12 @@
 (def ^:dynamic *need-quote* false)
 (defn quoted? [x]
   (and (tagged-literal? x) (= 'unrepl/quote (:tag x))))
-(defn may-quote [x]
-  (if (and (tagged-literal? x) *need-quote* (re-find #"^unrepl(?:\..+)?" (namespace (:tag x))))
-    (tagged-literal 'unrepl/quote x)
-    x))
-(defn may-quote-kv [[k v]]
-  [(may-quote k) (may-quote v)])
 
 (extend-protocol DefaultEdnize
-  clojure.lang.TaggedLiteral (default-ednize [x] x)
+  clojure.lang.TaggedLiteral (default-ednize [x]
+                               (if (and *need-quote* (re-find #"^unrepl(?:\..+)?" (namespace (:tag x))))
+                                 (tagged-literal 'unrepl/quote x)
+                                 x))
   clojure.lang.Ratio (default-ednize [^clojure.lang.Ratio x] (tagged-literal 'unrepl/ratio [(.numerator x) (.denominator x)]))
   clojure.lang.Var (default-ednize [x]
                      (tagged-literal 'clojure/var
@@ -147,14 +144,21 @@
   (or *realize-on-print* (not (instance? clojure.lang.IPending s)) (realized? s)))
 
 (defn- elide-vs [vs print-length]
-  (if-some [more-vs (seq (drop print-length vs))]
-    (concat (map may-quote (take print-length vs)) [(tagged-literal 'unrepl/... (*elide* more-vs))])
-    (map may-quote vs)))
+  (cond
+    (pos? print-length)
+    (lazy-seq
+      (if (may-print? vs)
+        (if-some [[v :as vs] (blame-seq vs)]
+          (cons v (elide-vs (rest vs) (dec print-length)))
+          ())
+        (list (tagged-literal 'unrepl/... (*elide* vs)))))
+    (and (may-print? vs) (nil? (blame-seq vs))) ()
+    :else (list (tagged-literal 'unrepl/... (*elide* vs)))))
 
 (defn- elide-kvs [kvs print-length]
-  (if-some [more-kvs (seq (drop print-length kvs))]
-    (concat (map may-quote-kv (take print-length kvs)) [[unreachable (tagged-literal 'unrepl/... (*elide* (ElidedKVs. more-kvs)))]])
-    (map may-quote-kv kvs)))
+  (if-some [more-kvs (when print-length (seq (drop print-length kvs)))]
+    (concat (take print-length kvs) [[unreachable (tagged-literal 'unrepl/... (*elide* (ElidedKVs. more-kvs)))]])
+    kvs))
 
 (defn ednize "Shallow conversion to edn safe subset." 
   ([x] (ednize x *print-length* *print-meta*))
@@ -170,8 +174,8 @@
     (seq? x) (elide-vs x print-length)
     (set? x) (into #{} (elide-vs x print-length))
     :else (let [x' (*ednize* x)]
-            (if (= x x')
-              x
+            (if (or (= x x') (quoted? x'))
+              x'
               (recur x' print-length print-meta)))))) ; todo : cache
 
 (declare print-on)
