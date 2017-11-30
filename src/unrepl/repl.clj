@@ -148,46 +148,6 @@
               (if (= NULL x) nil x)
               not-found))}))
 
-(defn- base64-encode [^java.io.InputStream in]
-  (let [table "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-        sb (StringBuilder.)]
-    (loop [shift 4 buf 0]
-      (let [got (.read in)]
-        (if (neg? got)
-          (do
-            (when-not (= shift 4)
-              (let [n (bit-and (bit-shift-right buf 6) 63)]
-                (.append sb (.charAt table n))))
-            (cond
-              (= shift 2) (.append sb "==")
-              (= shift 0) (.append sb \=))
-            (str sb))
-          (let [buf (bit-or buf (bit-shift-left got shift))
-                n (bit-and (bit-shift-right buf 6) 63)]
-            (.append sb (.charAt table n))
-            (let [shift (- shift 2)]
-              (if (neg? shift)
-                (do
-                  (.append sb (.charAt table (bit-and buf 63)))
-                  (recur 4 0))
-                (recur shift (bit-shift-left buf 6))))))))))
-
-(defn- base64-decode [^String s]
-  (let [table "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-        in (java.io.StringReader. s)
-        bos (java.io.ByteArrayOutputStream.)]
-    (loop [bits 0 buf 0]
-      (let [got (.read in)]
-        (when-not (or (neg? got) (= 61 #_\= got))
-          (let [buf (bit-or (.indexOf table got) (bit-shift-left buf 6))
-                bits (+ bits 6)]
-            (if (<= 8 bits)
-              (let [bits (- bits 8)]
-                (.write bos (bit-shift-right buf bits))
-                (recur bits (bit-and 63 buf)))
-              (recur bits buf))))))
-    (.toByteArray bos)))
-
 (defonce ^:private sessions (atom {}))
 
 (defonce ^:private elision-store (soft-store #(list `fetch %) p/unreachable))
@@ -197,10 +157,8 @@
       (= p/unreachable x) x
       (instance? unrepl.print.ElidedKVs x) x
       (string? x) x
+      (instance? unrepl.print.MimeContent x) x
       :else (seq x))))
-
-(defonce ^:private attachment-store (soft-store #(list `download %) (constantly nil)))
-(defn download [id] ((:get attachment-store) id))
 
 (defn session [id]
   (some-> @sessions (get id) deref))
@@ -250,7 +208,7 @@
           (binding [*out* out]
             (locking self
               (prn [k name])
-              (some-> (edn/read {:eof nil} in) base64-decode)))))))
+              (some-> (edn/read {:eof nil} in) p/base64-decode)))))))
   (let [o (Object.)] (locking o (.wait o))))
 
 (defn set-file-line-col [session-id file line col]
@@ -399,7 +357,6 @@
                 *file* "unrepl-session"
                 *source-path* "unrepl-session"
                 p/*elide* (:put elision-store)
-                p/*attach* (:put attachment-store)
                 p/*string-length* p/*string-length* 
                 write write-here]
         (.setContextClassLoader (Thread/currentThread) slcl)

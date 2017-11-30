@@ -264,8 +264,7 @@ Some values may print to `#unrepl/mime m` where m is a map with keys:
 - `:content-length`: optional, number.
 - `:filename`: optional, string.
 - `:details`: optional, anything, a representation of the object (e.g. for a `java.io.File` instance it could be the path and the class).
-- `:content` optional base64-encoded.
-- `:get` message template.
+- `:content` optional base64-encoded string (e.g. `#unrepl/base64 "..."`), or an elision.
 
 ### Message Templates
 

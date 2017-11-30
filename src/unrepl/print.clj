@@ -3,11 +3,49 @@
     [clojure.edn :as edn]
     [clojure.main :as main]))
 
+(defn base64-encode [^java.io.InputStream in]
+  (let [table "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        sb (StringBuilder.)]
+    (loop [shift 4 buf 0]
+      (let [got (.read in)]
+        (if (neg? got)
+          (do
+            (when-not (= shift 4)
+              (let [n (bit-and (bit-shift-right buf 6) 63)]
+                (.append sb (.charAt table n))))
+            (cond
+              (= shift 2) (.append sb "==")
+              (= shift 0) (.append sb \=))
+            (str sb))
+          (let [buf (bit-or buf (bit-shift-left got shift))
+                n (bit-and (bit-shift-right buf 6) 63)]
+            (.append sb (.charAt table n))
+            (let [shift (- shift 2)]
+              (if (neg? shift)
+                (do
+                  (.append sb (.charAt table (bit-and buf 63)))
+                  (recur 4 0))
+                (recur shift (bit-shift-left buf 6))))))))))
+
+(defn base64-decode [^String s]
+  (let [table "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        in (java.io.StringReader. s)
+        bos (java.io.ByteArrayOutputStream.)]
+    (loop [bits 0 buf 0]
+      (let [got (.read in)]
+        (when-not (or (neg? got) (= 61 #_\= got))
+          (let [buf (bit-or (.indexOf table got) (bit-shift-left buf 6))
+                bits (+ bits 6)]
+            (if (<= 8 bits)
+              (let [bits (- bits 8)]
+                (.write bos (bit-shift-right buf bits))
+                (recur bits (bit-and 63 buf)))
+              (recur bits buf))))))
+    (.toByteArray bos)))
+
 (def ^:dynamic *elide*
   "Function of 1 argument which returns the elision."
   (constantly nil))
-
-(def ^:dynamic *attach* nil)
 
 (def ^:dynamic *string-length* 80)
 
@@ -47,6 +85,12 @@
 (defn- as-inst [x]
   (edn/read-string {:readers {'inst #(tagged-literal 'inst %)}} (pr-str x)))
 
+(defrecord MimeContent [mk-in])
+
+(defn- mime-content [mk-in]
+  (when-some [e (*elide* (MimeContent. mk-in))]
+    {:content (tagged-literal 'unrepl/... e)}))
+
 (def ^:dynamic *object-representations*
   "map of classes to functions returning their representation component (3rd item in #unrepl/object [class id rep])"
   {clojure.lang.IDeref
@@ -73,26 +117,25 @@
    
    java.io.File (fn [^java.io.File f]
                   (into {:path (.getPath f)}
-                    (when (and *attach* (.isFile f))
+                    (when (.isFile f)
                       {:attachment (tagged-literal 'unrepl/mime
                                      (into {:content-type "application/octet-stream"
-                                           :content-length (.length f)}
-                                       (*attach* #(java.io.FileInputStream. f))))})))
+                                            :content-length (.length f)}
+                                       (mime-content #(java.io.FileInputStream. f))))})))
    
    java.awt.Image (latent-fn [^java.awt.Image img]
                     (let [w (.getWidth img nil)
                           h (.getHeight img nil)]
                       (into {:width w, :height h}
-                       (when *attach*
-                         {:attachment
-                          (tagged-literal 'unrepl/mime
-                            (into {:content-type "image/png"}
-                              (*attach* #(let [bos (java.io.ByteArrayOutputStream.)]
-                                               (when (javax.imageio.ImageIO/write
-                                                       (doto (java.awt.image.BufferedImage. w h java.awt.image.BufferedImage/TYPE_INT_ARGB)
-                                                         (-> .getGraphics (.drawImage img 0 0 nil)))
-                                                       "png" bos)
-                                                 (java.io.ByteArrayInputStream. (.toByteArray bos)))))))}))))
+                       {:attachment
+                        (tagged-literal 'unrepl/mime
+                          (into {:content-type "image/png"}
+                            (mime-content #(let [bos (java.io.ByteArrayOutputStream.)]
+                                             (when (javax.imageio.ImageIO/write
+                                                     (doto (java.awt.image.BufferedImage. w h java.awt.image.BufferedImage/TYPE_INT_ARGB)
+                                                       (-> .getGraphics (.drawImage img 0 0 nil)))
+                                                     "png" bos)
+                                               (java.io.ByteArrayInputStream. (.toByteArray bos)))))))})))
    
    Object (fn [x]
             (if (-> x class .isArray)
@@ -115,7 +158,8 @@
                      (tagged-literal 'clojure/var
                        (when-some [ns (:ns (meta x))] ; nil when local var
                          (symbol (name (ns-name ns)) (name (:name (meta x)))))))
-  Throwable (default-ednize [t] (tagged-literal 'error (Throwable->map t)))
+  Throwable (default-ednize [t]
+              (tagged-literal 'error (Throwable->map t)))
   Class (default-ednize [x] (tagged-literal 'unrepl.java/class (class-form x)))
   java.util.Date (default-ednize [x] (as-inst x))
   java.util.Calendar (default-ednize [x] (as-inst x))
@@ -160,6 +204,7 @@
   (cond
     (atomic? x) x
     (and print-meta (meta x)) (tagged-literal 'unrepl/meta [(meta x) (ednize x print-length false)])
+    (instance? MimeContent x) x
     (map? x) (into {} (elide-kvs x print-length))
     (instance? ElidedKVs x) (ElidedKVs. (elide-kvs x print-length))
     (instance? clojure.lang.MapEntry x) x
@@ -195,6 +240,11 @@
   (let [rem-depth (dec rem-depth)
         x (ednize x (if (neg? rem-depth) 0 *print-length*))]
     (cond
+      (instance? MimeContent x)
+      (with-open [in ((:mk-in x))]
+        (write "#unrepl/base64 \"")
+        (write (base64-encode in))
+        (write "\""))
       (tagged-literal? x)
       (do (write (str "#" (:tag x) " "))
         (case (:tag x)
