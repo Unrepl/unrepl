@@ -235,12 +235,10 @@
   
   clojure.lang.Var
   (-print-on [x write rem-depth]
-    (-print-on
-      (print-tag-lit-on write "clojure/var"
-        (when-some [ns (:ns (meta x))] ; nil when local var
-          (symbol (name (ns-name ns)) (name (:name (meta x)))))
-        rem-depth)
-      write rem-depth))
+    (print-tag-lit-on write "clojure/var"
+      (when-some [ns (:ns (meta x))] ; nil when local var
+        (symbol (name (ns-name ns)) (name (:name (meta x)))))
+      rem-depth))
   
   Throwable 
   (-print-on [t write rem-depth]
