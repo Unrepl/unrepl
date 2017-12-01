@@ -3,6 +3,23 @@
     [clojure.edn :as edn]
     [clojure.main :as main]))
 
+(defprotocol MachinePrintable
+  (-print-on [x write rem-depth]))
+
+(defn print-on [write x rem-depth]
+  (let [rem-depth (dec rem-depth)]
+    (if (and (neg? rem-depth) (or (nil? *print-length*) (pos? *print-length*)))
+      (binding [*print-length* 0]
+        (print-on write x 0))
+      (do
+        (when (and *print-meta* (meta x))
+          (write "#unrepl/meta [")
+          (-print-on (meta x) write rem-depth)
+          (write " "))
+        (-print-on x write rem-depth)
+        (when (and *print-meta* (meta x))
+          (write "]"))))))
+
 (defn base64-encode [^java.io.InputStream in]
   (let [table "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
         sb (StringBuilder.)]
@@ -49,18 +66,58 @@
 
 (def ^:dynamic *string-length* 80)
 
-(defprotocol DefaultEdnize
-  (default-ednize [x]))
-
-(def ^:dynamic *ednize* #'default-ednize)
-
 (def ^:dynamic *realize-on-print*
   "Set to false to avoid realizing lazy sequences."
   true)
 
-(deftype ElidedKVs [s]
-  clojure.lang.Seqable
-  (seq [_] (seq s)))
+(defmacro ^:private blame-seq [& body]
+  `(try (seq ~@body)
+     (catch Throwable t#
+       (list (tagged-literal 'unrepl/lazy-error t#)))))
+
+(defn- may-print? [s]
+  (or *realize-on-print* (not (instance? clojure.lang.IPending s)) (realized? s)))
+
+(declare ->ElidedKVs)
+
+(defn- print-kvs
+  [write kvs rem-depth]
+  (let [print-length *print-length*]
+    (loop [kvs kvs i 0]
+      (if (< i print-length)
+        (when-some [[[k v] & kvs] (seq kvs)]
+          (when (pos? i) (write ", "))
+          (print-on write k rem-depth)
+          (write " ")
+          (print-on write v rem-depth)
+          (recur kvs (inc i)))
+        (when (seq kvs)
+          (when (pos? i) (write ", "))
+          (write "#unrepl/... nil ")
+          (print-on write (tagged-literal 'unrepl/... (*elide* (->ElidedKVs kvs))) rem-depth))))))
+
+(defn- print-vs
+  [write vs rem-depth]
+  (let [print-length *print-length*]
+    (loop [vs vs i 0]
+      (if (and (< i print-length) (may-print? vs))
+        (when-some [[v :as vs] (blame-seq vs)]
+          (when (pos? i) (write " "))
+          (if (and (tagged-literal? v) (= (:tag v) 'unrepl/lazy-error))
+            (print-on write v rem-depth)
+           (do
+             (print-on write v rem-depth)
+             (recur (rest vs) (inc i)))))
+        (do
+          (when (pos? i) (write " "))
+          (print-on write (tagged-literal 'unrepl/... (*elide* vs)) rem-depth))))))
+
+(defrecord ElidedKVs [s]
+  MachinePrintable
+  (-print-on [_ write rem-depth]
+    (write "{")
+    (print-kvs write s rem-depth)
+    (write "}")))
 
 (def atomic? (some-fn nil? true? false? char? string? symbol? keyword? #(and (number? %) (not (ratio? %)))))
 
@@ -82,10 +139,13 @@
        ([x#] (@d# x#))
        ([x# & xs#] (apply @d# x# xs#)))))
 
-(defn- as-inst [x]
-  (edn/read-string {:readers {'inst #(tagged-literal 'inst %)}} (pr-str x)))
-
-(defrecord MimeContent [mk-in])
+(defrecord MimeContent [mk-in]
+  MachinePrintable
+  (-print-on [_ write rem-depth]
+    (with-open [in (mk-in)]
+      (write "#unrepl/base64 \"")
+      (write (base64-encode in))
+      (write "\""))))
 
 (defn- mime-content [mk-in]
   (when-some [e (*elide* (MimeContent. mk-in))]
@@ -151,124 +211,58 @@
 
 (def unreachable (tagged-literal 'unrepl/... nil))
 
-(extend-protocol DefaultEdnize
-  clojure.lang.TaggedLiteral (default-ednize [x] x)
-  clojure.lang.Ratio (default-ednize [^clojure.lang.Ratio x] (tagged-literal 'unrepl/ratio [(.numerator x) (.denominator x)]))
-  clojure.lang.Var (default-ednize [x]
-                     (tagged-literal 'clojure/var
-                       (when-some [ns (:ns (meta x))] ; nil when local var
-                         (symbol (name (ns-name ns)) (name (:name (meta x)))))))
-  Throwable (default-ednize [t]
-              (tagged-literal 'error (Throwable->map t)))
-  Class (default-ednize [x] (tagged-literal 'unrepl.java/class (class-form x)))
-  java.util.Date (default-ednize [x] (as-inst x))
-  java.util.Calendar (default-ednize [x] (as-inst x))
-  java.sql.Timestamp (default-ednize [x] (as-inst x))
-  clojure.lang.Namespace (default-ednize [x] (tagged-literal 'unrepl/ns (ns-name x)))
-  java.util.regex.Pattern (default-ednize [x] (tagged-literal 'unrepl/pattern (str x)))
-  Object
-  (default-ednize [x]
-    (tagged-literal 'unrepl/object
-      [(class x) (format "0x%x" (System/identityHashCode x)) (object-representation x)
-       {:bean {unreachable (tagged-literal 'unrepl/... (*elide* (ElidedKVs. (bean x))))}}])))
+(defn- print-tag-lit-on [write tag form rem-depth]
+  (write (str "#" tag " "))
+  (print-on write form rem-depth))
 
-(defmacro ^:private blame-seq [& body]
-  `(try (seq ~@body)
-     (catch Throwable t#
-       (list (tagged-literal 'unrepl/lazy-error t#)))))
+(extend-protocol MachinePrintable
+  clojure.lang.TaggedLiteral
+  (-print-on [x write rem-depth]
+    
+    (case (:tag x)
+      unrepl/... (binding ; don't elide the elision 
+                   [*print-length* Long/MAX_VALUE
+                    *print-level* Long/MAX_VALUE
+                    *string-length* Long/MAX_VALUE]
+                   (write (str "#" (:tag x) " "))
+                   (print-on write (:form x) Long/MAX_VALUE))
+      (print-tag-lit-on write (:tag x) (:form x) rem-depth)))
 
-(defn- may-print? [s]
-  (or *realize-on-print* (not (instance? clojure.lang.IPending s)) (realized? s)))
-
-(defn- elide-vs [vs print-length]
-  (cond
-    (pos? print-length)
-    (lazy-seq
-      (if (may-print? vs)
-        (if-some [[v :as vs] (blame-seq vs)]
-          (cons v (elide-vs (rest vs) (dec print-length)))
-          ())
-        (list (tagged-literal 'unrepl/... (*elide* vs)))))
-    (and (may-print? vs) (nil? (blame-seq vs))) ()
-    :else (list (tagged-literal 'unrepl/... (*elide* vs)))))
-
-(defn- elide-kvs [kvs print-length]
-  (if-some [more-kvs (when print-length (seq (drop print-length kvs)))]
-    (concat (take print-length kvs) [[unreachable (tagged-literal 'unrepl/... (*elide* (ElidedKVs. more-kvs)))]])
-    kvs))
-
-(defn ednize "Shallow conversion to edn safe subset." 
-  ([x] (ednize x *print-length* *print-meta*))
-  ([x print-length] (ednize x print-length *print-meta*))
-  ([x print-length print-meta]
-  (cond
-    (atomic? x) x
-    (and print-meta (meta x)) (tagged-literal 'unrepl/meta [(meta x) (ednize x print-length false)])
-    (instance? MimeContent x) x
-    (map? x) (into {} (elide-kvs x print-length))
-    (instance? ElidedKVs x) (ElidedKVs. (elide-kvs x print-length))
-    (instance? clojure.lang.MapEntry x) x
-    (vector? x) (into (empty x) (elide-vs x print-length))
-    (seq? x) (elide-vs x print-length)
-    (set? x) (into #{} (elide-vs x print-length))
-    :else (let [x' (*ednize* x)]
-            (if (= x x')
-              x
-              (recur x' print-length print-meta)))))) ; todo : cache
-
-(declare print-on)
-
-(defn- print-vs 
-  ([write vs rem-depth]
-    (print-vs write vs rem-depth print-on " "))
-  ([write vs rem-depth print-v sep]
-    (when-some [[v & vs] (seq vs)]
-      (print-v write v rem-depth)
-      (doseq [v vs]
-        (write sep)
-        (print-v write v rem-depth)))))
-
-(defn- print-kv [write [k v] rem-depth]
-  (print-on write k rem-depth)
-  (write " ")
-  (print-on write v rem-depth))
-
-(defn- print-kvs [write kvs rem-depth]
-    (print-vs write kvs rem-depth print-kv ", "))
-
-(defn- print-on [write x rem-depth]
-  (let [rem-depth (dec rem-depth)
-        x (ednize x (if (neg? rem-depth) 0 *print-length*))]
-    (cond
-      (instance? MimeContent x)
-      (with-open [in ((:mk-in x))]
-        (write "#unrepl/base64 \"")
-        (write (base64-encode in))
-        (write "\""))
-      (tagged-literal? x)
-      (do (write (str "#" (:tag x) " "))
-        (case (:tag x)
-          unrepl/... (binding ; don't elide the elision 
-                       [*print-length* Long/MAX_VALUE
-                        *print-level* Long/MAX_VALUE
-                        *string-length* Long/MAX_VALUE]
-                       (print-on write (:form x) Long/MAX_VALUE))
-          (recur write (:form x) rem-depth)))
-      (map? x) (let [elision (get x unreachable)
-                     x (dissoc x unreachable)]
-                 (write "{")
-                 (print-kvs write x rem-depth)
-                 (when elision
-                   (write ", ")
-                   (print-on write unreachable rem-depth)
-                   (write " ")
-                   (print-on write elision rem-depth))
-                 (write "}"))
-      (instance? ElidedKVs x) (do (write "{") (print-kvs write x rem-depth) (write "}"))
-      (vector? x) (do (write "[") (print-vs write x rem-depth) (write "]"))
-      (seq? x) (do (write "(") (print-vs write x rem-depth) (write ")"))
-      (set? x) (do (write "#{") (print-vs write x rem-depth) (write "}"))
-      (and (string? x) (> (count x) *string-length*))
+  clojure.lang.Ratio
+  (-print-on [x write rem-depth]
+    (print-tag-lit-on write "unrepl/ratio"
+      [(.numerator x) (.denominator x)] rem-depth))
+  
+  clojure.lang.Var
+  (-print-on [x write rem-depth]
+    (-print-on
+      (print-tag-lit-on write "clojure/var"
+        (when-some [ns (:ns (meta x))] ; nil when local var
+          (symbol (name (ns-name ns)) (name (:name (meta x)))))
+        rem-depth)
+      write rem-depth))
+  
+  Throwable 
+  (-print-on [t write rem-depth]
+    (print-tag-lit-on write "error" (Throwable->map t) rem-depth))
+  
+  Class
+  (-print-on [x write rem-depth]
+    (print-tag-lit-on write "unrepl.java/class" (class-form x) rem-depth))
+  
+  java.util.Date (-print-on [x write rem-depth] (write (pr-str x)))
+  java.util.Calendar (-print-on [x write rem-depth] (write (pr-str x)))
+  java.sql.Timestamp (-print-on [x write rem-depth] (write (pr-str x)))
+  clojure.lang.Namespace
+  (-print-on [x write rem-depth]
+    (print-tag-lit-on write "unrepl/ns" (ns-name x) rem-depth))
+  java.util.regex.Pattern
+  (-print-on [x write rem-depth]
+    (print-tag-lit-on write "unrepl/pattern" (str x) rem-depth))
+  String
+  (-print-on [x write rem-depth]
+    (if (<= (count x) *string-length*)
+      (write (as-str x))
       (let [i (if (and (Character/isHighSurrogate (.charAt ^String x (dec *string-length*)))
                     (Character/isLowSurrogate (.charAt ^String x *string-length*)))
                 (inc *string-length*) *string-length*)
@@ -281,19 +275,48 @@
             (write (as-str prefix))
             (write " ")
             (print-on write (tagged-literal 'unrepl/... (*elide* rest)) rem-depth)
-            (write "]"))))
+            (write "]")))))))
+
+(defn- print-coll [open close write x rem-depth]
+  (write open)
+  (print-vs write x rem-depth)
+  (write close))
+
+(extend-protocol MachinePrintable
+  nil
+  (-print-on [_ write _] (write "nil"))
+  Object
+  (-print-on [x write rem-depth]
+    (cond
       (atomic? x) (write (as-str x))
-      :else (throw (ex-info "Can't print value." {:value x})))))
+      (map? x)
+      (do
+        (when (record? x)
+          (write "#") (write (.getName (class x))) (write " "))
+        (write "{")
+        (print-kvs write x rem-depth)
+        (write "}"))
+      (vector? x) (print-coll "[" "]" write x rem-depth)
+      (seq? x) (print-coll "(" ")" write x rem-depth)
+      (set? x) (print-coll "#{" "}" write x rem-depth)
+      :else
+      (print-tag-lit-on write "unrepl/object"
+        [(class x) (format "0x%x" (System/identityHashCode x)) (object-representation x)
+         {:bean {unreachable (tagged-literal 'unrepl/... (*elide* (ElidedKVs. (bean x))))}}]
+        rem-depth))))
 
 (defn edn-str [x]
   (let [out (java.io.StringWriter.)
         write (fn [^String s] (.write out s))]
     (binding [*print-readably* true
-              *print-length* (or *print-length* 10)]
+              *print-length* (or *print-length* 10)
+              *print-level* (or *print-level* 8)
+              *string-length* (or *string-length* 72)]
       (print-on write x (or *print-level* 8))
       (str out))))
 
 (defn full-edn-str [x]
   (binding [*print-length* Long/MAX_VALUE
-            *print-level* Long/MAX_VALUE]
+            *print-level* Long/MAX_VALUE
+            *string-length* Integer/MAX_VALUE]
     (edn-str x)))
