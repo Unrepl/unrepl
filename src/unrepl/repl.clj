@@ -256,7 +256,7 @@
                              (-> (apply tagging-writer args)
                                java.io.BufferedWriter.
                                (doto schedule-writer-flush!)))
-          edn-out (scheduled-writer :out write-here)
+          edn-out (scheduled-writer :out (fn [x] (binding [p/*string-length* Integer/MAX_VALUE] (write-here x))))
           ensure-raw-repl (fn []
                             (when (and @in-eval @unrepl) ; reading from eval!
                               (var-set unrepl false)
@@ -387,14 +387,16 @@
                                                    :len (- offset' offset)}
                                             id])
                                     (if (and (seq?  r) (= (first r) 'unrepl/do))
-                                      (let [id @eval-id]
+                                      (let [id @eval-id
+                                            write #(binding [p/*string-length* Integer/MAX_VALUE] (write %))]
                                         (flushing [*err* (tagging-writer :err id write)
                                                    *out* (scheduled-writer :out id write)]
                                           (eval (cons 'do (next r))))
                                         request-prompt)
                                       r))))
              :eval (fn [form]
-                     (let [id @eval-id]
+                     (let [id @eval-id
+                           write #(binding [p/*string-length* Integer/MAX_VALUE] (write %))]
                        (flushing [*err* (tagging-writer :err id write)
                                   *out* (scheduled-writer :out id write)]
                          (interruptible-eval form))))
