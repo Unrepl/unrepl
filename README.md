@@ -25,7 +25,7 @@ If you want to develop a client or just understand better what's happening under
 git clone https://github.com/Unrepl/unrepl.git
 cd unrepl
 # start a plain repl (non unrepl, non nrepl) 
-JVM_OPTS='-Dclojure.server.repl={:port,5555,:accept,clore.core.server/repl,:server-daemon,false}' lein trampoline run -m clojure.main -e nil &
+JVM_OPTS='-Dclojure.server.repl={:port,5555,:accept,clojure.core.server/repl,:server-daemon,false}' lein trampoline run -m clojure.main -e nil &
 # generate the blob
 lein unrepl-make-blob
 # connect, upgrade and enjoy!
