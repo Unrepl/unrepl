@@ -171,9 +171,7 @@
    
    clojure.lang.AFn
    (fn [x]
-     (let [[_ ns name] (re-matches #"(?:(.+?)/)?(.*)" (-> x class .getName main/demunge))]
-       ; the regex ensure the first group is nil when no ns
-       (symbol ns name)))
+     (-> x class .getName main/demunge))
    
    java.io.File (fn [^java.io.File f]
                   (into {:path (.getPath f)}
