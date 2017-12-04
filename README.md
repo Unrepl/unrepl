@@ -12,6 +12,26 @@ This document is a work in progress but is mostly stable at this point (few brea
 
 You can ask questions and share feedback on the `#unrepl` channel on the Clojurians Slack.
 
+## Usage
+
+If you are a simple user, you don't need to care about unrepl proper, not even add it to your project deps. Just use one of the existing clients:
+
+ * [Unravel](https://github.com/Unrepl/unravel) a command-line client,
+ * [Unrepl.el](https://github.com/Unrepl/unrepl.el) an Emacs one.
+
+If you want to develop a client or just understand better what's happening under the hood then try:
+
+```sh
+git clone https://github.com/Unrepl/unrepl.git
+cd unrepl
+# start a plain repl (non unrepl, non nrepl) 
+lein update-in :jvm-opts conj '"-Dclojure.server.repl={:port 5555 :accept clojure.core.server/repl :server-daemon false}"' -- trampoline run -m clojure.main -e nil &
+# generate the blob
+lein unrepl-make-blob
+# connect, upgrade and enjoy!
+rlwrap cat resources/unrepl/blob.clj - | nc localhost 5555
+```
+
 ## Breaking Changes
 
 2017-11-23: change in map elisions, now the key is always `#unrepl/... nil` and the value contains the actual elision.
@@ -39,10 +59,6 @@ A REPL is meant for evaluating code.
 Some tooling needs (e.g. autocompletion) may be better serviced by a separate connection, which should not necessarily be a REPL (but may have started as a REPL upgraded to something else.)
 
 Parts of this specification assumes two REPLs: the main (or user) REPL and the control (or client) REPL.
-
-## Usage
-
-Users don't need to care about unrepl, not even add it to their project deps. Just use [nice clients](#clients).
 
 ## Spec
 
