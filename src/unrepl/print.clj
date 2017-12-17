@@ -100,16 +100,14 @@
   [write vs rem-depth]
   (let [print-length *print-length*]
     (loop [vs vs i 0]
-      (if (and (< i print-length) (may-print? vs))
-        (when-some [[v :as vs] (blame-seq vs)]
-          (when (pos? i) (write " "))
+      (when-some [[v :as vs] (blame-seq vs)]
+        (when (pos? i) (write " "))
+        (if (and (< i print-length) (may-print? vs))
           (if (and (tagged-literal? v) (= (:tag v) 'unrepl/lazy-error))
             (print-on write v rem-depth)
-           (do
-             (print-on write v rem-depth)
-             (recur (rest vs) (inc i)))))
-        (do
-          (when (pos? i) (write " "))
+            (do
+              (print-on write v rem-depth)
+              (recur (rest vs) (inc i))))
           (print-on write (tagged-literal 'unrepl/... (*elide* vs)) rem-depth))))))
 
 (defrecord ElidedKVs [s]
