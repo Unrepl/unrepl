@@ -374,21 +374,19 @@
                                                    [(symbol (name (ns-name (:ns m))) (name (:name m))) @v])))
                                           (:prompt-vars @session-state))]))
              :read (fn [request-prompt request-exit]
-                     (blame :read (let [line+col [(.getLineNumber *in*) (.getColumnNumber *in*)]
+                     (blame :read (let [id (var-set eval-id (inc @eval-id))
+                                        line+col [(.getLineNumber *in*) (.getColumnNumber *in*)]
                                         offset (:offset *in*)
                                         r (m/repl-read request-prompt request-exit)
                                         line+col' [(.getLineNumber *in*) (.getColumnNumber *in*)]
                                         offset' (:offset *in*)
-                                        len (- offset' offset)
-                                        id (when-not (#{request-prompt request-exit} r)
-                                             (var-set eval-id (inc @eval-id)))]
+                                        len (- offset' offset)]
                                     (write [:read {:from line+col :to line+col'
                                                    :offset offset
                                                    :len (- offset' offset)}
                                             id])
                                     (if (and (seq?  r) (= (first r) 'unrepl/do))
-                                      (let [id @eval-id
-                                            write #(binding [p/*string-length* Integer/MAX_VALUE] (write %))]
+                                      (let [write #(binding [p/*string-length* Integer/MAX_VALUE] (write %))]
                                         (flushing [*err* (tagging-writer :err id write)
                                                    *out* (scheduled-writer :out id write)]
                                           (eval (cons 'do (next r))))
