@@ -1,7 +1,7 @@
 (ns unrepl.print
   (:require [clojure.string :as str]
-    [clojure.edn :as edn]
-    [clojure.main :as main]))
+            [clojure.edn :as edn]
+            [clojure.main :as main]))
 
 (defprotocol MachinePrintable
   (-print-on [x write rem-depth]))
@@ -72,8 +72,8 @@
 
 (defmacro ^:private blame-seq [& body]
   `(try (seq ~@body)
-     (catch Throwable t#
-       (list (tagged-literal 'unrepl/lazy-error t#)))))
+        (catch Throwable t#
+          (list (tagged-literal 'unrepl/lazy-error t#)))))
 
 (defn- may-print? [s]
   (or *realize-on-print* (not (instance? clojure.lang.IPending s)) (realized? s)))
@@ -125,9 +125,9 @@
   ;hacky
   (cond
     (string? x) (str/replace (pr-str x) #"\p{Cntrl}"
-                  #(format "\\u%04x" (int (.charAt ^String % 0))))
+                             #(format "\\u%04x" (int (.charAt ^String % 0))))
     (char? x) (str/replace (pr-str x) #"\p{Cntrl}"
-                #(format "u%04x" (int (.charAt ^String % 0))))
+                           #(format "u%04x" (int (.charAt ^String % 0))))
     :else (pr-str x)))
 
 (defmacro ^:private latent-fn [& fn-body]
@@ -154,51 +154,51 @@
   {clojure.lang.IDeref
    (fn [x]
      (let [pending? (and (instance? clojure.lang.IPending x) ; borrowed from https://github.com/brandonbloom/fipp/blob/8df75707e355c1a8eae5511b7d73c1b782f57293/src/fipp/ednize.clj#L37-L51
-                      (not (.isRealized ^clojure.lang.IPending x)))
+                         (not (.isRealized ^clojure.lang.IPending x)))
            [ex val] (when-not pending?
                       (try [false @x]
-                        (catch Throwable e
-                          [true e])))
+                           (catch Throwable e
+                             [true e])))
            failed? (or ex (and (instance? clojure.lang.Agent x)
-                            (agent-error x)))
+                               (agent-error x)))
            status (cond
                     failed? :failed
                     pending? :pending
                     :else :ready)]
        {:unrepl.ref/status status :unrepl.ref/val val}))
-   
+
    clojure.lang.AFn
    (fn [x]
      (-> x class .getName main/demunge))
-   
+
    java.io.File (fn [^java.io.File f]
                   (into {:path (.getPath f)}
-                    (when (.isFile f)
-                      {:attachment (tagged-literal 'unrepl/mime
-                                     (into {:content-type "application/octet-stream"
-                                            :content-length (.length f)}
-                                       (mime-content #(java.io.FileInputStream. f))))})))
-   
+                        (when (.isFile f)
+                          {:attachment (tagged-literal 'unrepl/mime
+                                                       (into {:content-type "application/octet-stream"
+                                                              :content-length (.length f)}
+                                                             (mime-content #(java.io.FileInputStream. f))))})))
+
    java.awt.Image (latent-fn [^java.awt.Image img]
-                    (let [w (.getWidth img nil)
-                          h (.getHeight img nil)]
-                      (into {:width w, :height h}
-                       {:attachment
-                        (tagged-literal 'unrepl/mime
-                          (into {:content-type "image/png"}
-                            (mime-content #(let [bos (java.io.ByteArrayOutputStream.)]
-                                             (when (javax.imageio.ImageIO/write
-                                                     (doto (java.awt.image.BufferedImage. w h java.awt.image.BufferedImage/TYPE_INT_ARGB)
-                                                       (-> .getGraphics (.drawImage img 0 0 nil)))
-                                                     "png" bos)
-                                               (java.io.ByteArrayInputStream. (.toByteArray bos)))))))})))
-   
+                             (let [w (.getWidth img nil)
+                                   h (.getHeight img nil)]
+                               (into {:width w, :height h}
+                                     {:attachment
+                                      (tagged-literal 'unrepl/mime
+                                                      (into {:content-type "image/png"}
+                                                            (mime-content #(let [bos (java.io.ByteArrayOutputStream.)]
+                                                                             (when (javax.imageio.ImageIO/write
+                                                                                    (doto (java.awt.image.BufferedImage. w h java.awt.image.BufferedImage/TYPE_INT_ARGB)
+                                                                                      (-> .getGraphics (.drawImage img 0 0 nil)))
+                                                                                    "png" bos)
+                                                                               (java.io.ByteArrayInputStream. (.toByteArray bos)))))))})))
+
    Object (fn [x]
             (if (-> x class .isArray)
               (seq x)
               (str x)))})
 
-(defn- object-representation [x]  
+(defn- object-representation [x]
   (reduce-kv (fn [_ class f]
                (when (instance? class x) (reduced (f x)))) nil *object-representations*)) ; todo : cache
 
@@ -214,12 +214,12 @@
 (extend-protocol MachinePrintable
   clojure.lang.TaggedLiteral
   (-print-on [x write rem-depth]
-    
+
     (case (:tag x)
       unrepl/... (binding ; don't elide the elision 
-                   [*print-length* Long/MAX_VALUE
-                    *print-level* Long/MAX_VALUE
-                    *string-length* Long/MAX_VALUE]
+                  [*print-length* Long/MAX_VALUE
+                   *print-level* Long/MAX_VALUE
+                   *string-length* Long/MAX_VALUE]
                    (write (str "#" (:tag x) " "))
                    (print-on write (:form x) Long/MAX_VALUE))
       (print-tag-lit-on write (:tag x) (:form x) rem-depth)))
@@ -227,23 +227,23 @@
   clojure.lang.Ratio
   (-print-on [x write rem-depth]
     (print-tag-lit-on write "unrepl/ratio"
-      [(.numerator x) (.denominator x)] rem-depth))
-  
+                      [(.numerator x) (.denominator x)] rem-depth))
+
   clojure.lang.Var
   (-print-on [x write rem-depth]
     (print-tag-lit-on write "clojure/var"
-      (when-some [ns (:ns (meta x))] ; nil when local var
-        (symbol (name (ns-name ns)) (name (:name (meta x)))))
-      rem-depth))
-  
-  Throwable 
+                      (when-some [ns (:ns (meta x))] ; nil when local var
+                        (symbol (name (ns-name ns)) (name (:name (meta x)))))
+                      rem-depth))
+
+  Throwable
   (-print-on [t write rem-depth]
     (print-tag-lit-on write "error" (Throwable->map t) rem-depth))
-  
+
   Class
   (-print-on [x write rem-depth]
     (print-tag-lit-on write "unrepl.java/class" (class-form x) rem-depth))
-  
+
   java.util.Date (-print-on [x write rem-depth] (write (pr-str x)))
   java.util.Calendar (-print-on [x write rem-depth] (write (pr-str x)))
   java.sql.Timestamp (-print-on [x write rem-depth] (write (pr-str x)))
@@ -258,7 +258,7 @@
     (if (<= (count x) *string-length*)
       (write (as-str x))
       (let [i (if (and (Character/isHighSurrogate (.charAt ^String x (dec *string-length*)))
-                    (Character/isLowSurrogate (.charAt ^String x *string-length*)))
+                       (Character/isLowSurrogate (.charAt ^String x *string-length*)))
                 (inc *string-length*) *string-length*)
             prefix (subs x 0 i)
             rest (subs x i)]
@@ -295,9 +295,9 @@
       (set? x) (print-coll "#{" "}" write x rem-depth)
       :else
       (print-tag-lit-on write "unrepl/object"
-        [(class x) (format "0x%x" (System/identityHashCode x)) (object-representation x)
-         {:bean {unreachable (tagged-literal 'unrepl/... (*elide* (ElidedKVs. (bean x))))}}]
-        rem-depth))))
+                        [(class x) (format "0x%x" (System/identityHashCode x)) (object-representation x)
+                         {:bean {unreachable (tagged-literal 'unrepl/... (*elide* (ElidedKVs. (bean x))))}}]
+                        rem-depth))))
 
 (defn edn-str [x]
   (let [out (java.io.StringWriter.)
