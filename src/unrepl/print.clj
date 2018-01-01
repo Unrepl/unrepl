@@ -211,6 +211,59 @@
   (write (str "#" tag " "))
   (print-on write form rem-depth))
 
+;; --
+;; Throwable->map backport from Clojure 1.9
+;;
+;; The behavior of clojure.core/Throwable->map changed from 1.8 to 1.9.
+;; We need the (more correct) behavior in 1.9.
+;;
+;; https://github.com/clojure/clojure/blob/master/changes.md#33-other-fixes
+
+(defn StackTraceElement->vec'
+  "Constructs a data representation for a StackTraceElement"
+  {:added "1.9"}
+  [^StackTraceElement o]
+  [(symbol (.getClassName o)) (symbol (.getMethodName o)) (.getFileName o) (.getLineNumber o)])
+
+(defn Throwable->map'
+  "Constructs a data representation for a Throwable."
+  {:added "1.7"}
+  [^Throwable o]
+  (let [base (fn [^Throwable t]
+               (merge {:type (symbol (.getName (class t)))
+                       :message (.getLocalizedMessage t)}
+                      (when-let [ed (ex-data t)]
+                        {:data ed})
+                      (let [st (.getStackTrace t)]
+                        (when (pos? (alength st))
+                          {:at (StackTraceElement->vec' (aget st 0))}))))
+        via (loop [via [], ^Throwable t o]
+              (if t
+                (recur (conj via t) (.getCause t))
+                via))
+        ^Throwable root (peek via)
+        m {:cause (.getLocalizedMessage root)
+           :via (vec (map base via))
+           :trace (vec (map StackTraceElement->vec'
+                            (.getStackTrace ^Throwable (or root o))))}
+        data (ex-data root)]
+    (if data
+      (assoc m :data data)
+      m)))
+
+;; use standard implementation if running in Clojure 1.9 or above,
+;; backported version otherwise
+
+(defn Throwable->map'' [^Throwable o]
+  (if (or
+       (-> *clojure-version* :major (> 1))
+       (-> *clojure-version* :minor (>= 9)))
+    (Throwable->map o)
+    (Throwable->map' o)))
+
+;; --
+
+
 (extend-protocol MachinePrintable
   clojure.lang.TaggedLiteral
   (-print-on [x write rem-depth]
@@ -238,7 +291,7 @@
 
   Throwable
   (-print-on [t write rem-depth]
-    (print-tag-lit-on write "error" (Throwable->map t) rem-depth))
+    (print-tag-lit-on write "error" (Throwable->map'' t) rem-depth))
 
   Class
   (-print-on [x write rem-depth]
