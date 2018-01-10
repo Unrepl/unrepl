@@ -254,12 +254,12 @@
 ;; use standard implementation if running in Clojure 1.9 or above,
 ;; backported version otherwise
 
-(defn Throwable->map'' [^Throwable o]
+(def Throwable->map''
   (if (or
        (-> *clojure-version* :major (> 1))
        (-> *clojure-version* :minor (>= 9)))
-    (Throwable->map o)
-    (Throwable->map' o)))
+    Throwable->map
+    Throwable->map'))
 
 ;; --
 
