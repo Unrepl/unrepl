@@ -17,7 +17,7 @@ You can ask questions and share feedback on the `#unrepl` channel on the Clojuri
 If you are a simple user, you don't need to care about unrepl proper, not even add it to your project deps. Just use one of the existing clients:
 
  * [Unravel](https://github.com/Unrepl/unravel) a command-line client,
- * [Unrepl.el](https://github.com/Unrepl/unrepl.el) an Emacs one.
+ * [Spiral](https://github.com/Unrepl/spiral) an Emacs one.
 
 If you want to develop a client or just understand better what's happening under the hood then try:
 
@@ -38,7 +38,7 @@ rlwrap cat resources/unrepl/blob.clj - | nc localhost 5555
 
 ## Clients
 
-There are two clients: [Unravel](https://github.com/Unrepl/unravel) a command-line client and [Unrepl.el](https://github.com/Unrepl/unrepl.el) an Emacs one.
+There are two clients: [Unravel](https://github.com/Unrepl/unravel) a command-line client and [Spiral](https://github.com/Unrepl/spiral) an Emacs one.
 
 ## Background
 
