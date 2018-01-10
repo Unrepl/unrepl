@@ -255,11 +255,9 @@
 ;; backported version otherwise
 
 (def Throwable->map''
-  (if (or
-       (-> *clojure-version* :major (> 1))
-       (-> *clojure-version* :minor (>= 9)))
-    Throwable->map
-    Throwable->map'))
+  (if (neg? (compare (mapv *clojure-version* [:major :minor]) [1 9]))
+    Throwable->map'
+    Throwable->map))
 
 ;; --
 
