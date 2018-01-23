@@ -66,6 +66,8 @@
 
 (def ^:dynamic *string-length* 80)
 
+(def ^:dynamic *max-colls* 100)
+
 (def ^:dynamic *realize-on-print*
   "Set to false to avoid realizing lazy sequences."
   true)
@@ -211,6 +213,9 @@
   (write (str "#" tag " "))
   (print-on write form rem-depth))
 
+(defn- print-trusted-tag-lit-on [write tag form rem-depth]
+  (print-tag-lit-on write tag form (inc rem-depth)))
+
 ;; --
 ;; Throwable->map backport from Clojure 1.9
 ;;
@@ -277,8 +282,8 @@
 
   clojure.lang.Ratio
   (-print-on [x write rem-depth]
-    (print-tag-lit-on write "unrepl/ratio"
-                      [(.numerator x) (.denominator x)] rem-depth))
+    (print-trusted-tag-lit-on write "unrepl/ratio"
+                              [(.numerator x) (.denominator x)] rem-depth))
 
   clojure.lang.Var
   (-print-on [x write rem-depth]
@@ -345,10 +350,10 @@
       (seq? x) (print-coll "(" ")" write x rem-depth)
       (set? x) (print-coll "#{" "}" write x rem-depth)
       :else
-      (print-tag-lit-on write "unrepl/object"
-                        [(class x) (format "0x%x" (System/identityHashCode x)) (object-representation x)
-                         {:bean {unreachable (tagged-literal 'unrepl/... (*elide* (ElidedKVs. (bean x))))}}]
-                        rem-depth))))
+      (print-trusted-tag-lit-on write "unrepl/object"
+                                [(class x) (format "0x%x" (System/identityHashCode x)) (object-representation x)
+                                 {:bean {unreachable (tagged-literal 'unrepl/... (*elide* (ElidedKVs. (bean x))))}}]
+                                rem-depth))))
 
 (defn edn-str [x]
   (let [out (java.io.StringWriter.)
