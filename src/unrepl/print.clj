@@ -353,7 +353,7 @@
       (print-trusted-tag-lit-on write "unrepl/object"
                                 [(class x) (format "0x%x" (System/identityHashCode x)) (object-representation x)
                                  {:bean {unreachable (tagged-literal 'unrepl/... (*elide* (ElidedKVs. (bean x))))}}]
-                                rem-depth))))
+                                (inc rem-depth))))) ; is very trusted
 
 (defn edn-str [x]
   (let [out (java.io.StringWriter.)
