@@ -21,7 +21,7 @@
             (-> file .toURI .toURL))))
       (findClass [name]
         (if-some  [bytes (f :class name)]
-          (.invoke define-class this (to-array [name bytes 0 (count bytes)]))
+          (.invoke define-class this (to-array [name bytes (int 0) (int (count bytes))]))
           (throw (ClassNotFoundException. name)))))))
 
 (defn ^java.io.Writer tagging-writer
