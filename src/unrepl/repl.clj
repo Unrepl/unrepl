@@ -111,17 +111,6 @@
           (offset! (count s))
           s)))))
 
-(defn- close-socket! [x]
-  ; hacky way because the socket is not exposed by clojure.core.server
-  (loop [x x]
-    (if (= "java.net.SocketInputStream" (.getName (class x)))
-      (do (.close x) true)
-      (when-some [^java.lang.reflect.Field field
-                  (->> x class (iterate #(.getSuperclass %)) (take-while identity)
-                       (mapcat #(.getDeclaredFields %))
-                       (some #(when (#{"in" "sd"} (.getName ^java.lang.reflect.Field %)) %)))]
-        (recur (.get (doto field (.setAccessible true)) x))))))
-
 (defn soft-store [make-action]
   (let [ids-to-session+refs (atom {})
         refs-to-ids (atom {})
