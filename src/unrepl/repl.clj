@@ -183,9 +183,6 @@
                {:eval future
                 :bindings {}})))))
 
-(defn exit! [session-id] ; too violent
-  (some-> session-id session :in close-socket!))
-
 (defn reattach-outs! [session-id]
   (some-> session-id session :write-atom
           (reset!
@@ -277,8 +274,7 @@
             (non-eliding-write
               [:unrepl/hello {:session session-id
                               :actions (into
-                                         {:exit `(exit! ~session-id)
-                                          :start-aux `(start-aux ~session-id)
+                                         {:start-aux `(start-aux ~session-id)
                                           :log-eval
                                           `(some-> ~session-id session :log-eval)
                                           :log-all

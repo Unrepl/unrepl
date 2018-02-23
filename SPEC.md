@@ -198,10 +198,6 @@ All actions are optional.
 
 (Advertised in `:unrepl/hello` messages.)
 
-##### `:exit`
-
-No parameter. Exit the repl, close the connection.
-
 ##### `:set-source`
 
 Three parameters: 
