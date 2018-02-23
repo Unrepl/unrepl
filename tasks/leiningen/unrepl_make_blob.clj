@@ -30,9 +30,10 @@
       (if (map? session-actions-map)
         (let [session-actions-map (into session-actions-map
                                     (map (fn [[k v]]
-                                           [k (if (and (seq? v) (symbol? (first v)) (namespace (first v)))
-                                                (tagged-literal 'unrepl-make-blob-syntaxquote (list 'unrepl.repl/ensure-ns v))
-                                                v)]))
+                                           [k (tagged-literal 'unrepl-make-blob-syntaxquote
+                                                (if (and (seq? v) (symbol? (first v)) (namespace (first v)))
+                                                  (list 'unrepl.repl/ensure-ns v)
+                                                  v))]))
                                     session-actions-map)
               session-actions (-> session-actions-map pr-str 
                                 (str/replace #"#unrepl-make-blob-(?:syntax|un)?quote " {"#unrepl-make-blob-syntaxquote " "`"
