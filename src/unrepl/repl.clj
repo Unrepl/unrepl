@@ -125,8 +125,8 @@
                        (some #(when (#{"in" "sd"} (.getName ^java.lang.reflect.Field %)) %)))]
         (recur (.get (doto field (.setAccessible true)) x))))))
 
-(defn soft-store [make-action not-found]
-  (let [ids-to-refs (atom {})
+(defn soft-store [make-action]
+  (let [ids-to-session+refs (atom {})
         refs-to-ids (atom {})
         refq (java.lang.ref.ReferenceQueue.)
         NULL (Object.)]
@@ -134,31 +134,31 @@
                        (let [ref (.remove refq)]
                          (let [id (@refs-to-ids ref)]
                            (swap! refs-to-ids dissoc ref)
-                           (swap! ids-to-refs dissoc id)))
+                           (swap! ids-to-session+refs dissoc id)))
                        (recur))))
-    {:put (fn [x]
+    {:put (fn [session-id x]
             (let [x (if (nil? x) NULL x)
                   id (keyword (gensym))
                   ref (java.lang.ref.SoftReference. x refq)]
               (swap! refs-to-ids assoc ref id)
-              (swap! ids-to-refs assoc id ref)
+              (swap! ids-to-session+refs assoc id [session-id ref])
               {:get (make-action id)}))
      :get (fn [id]
-            (if-some [x (some-> @ids-to-refs ^java.lang.ref.Reference (get id) .get)]
-              (if (= NULL x) nil x)
-              not-found))}))
+            (when-some [[session-id  ^java.lang.ref.Reference r] (@ids-to-session+refs id)]
+              (let [x (.get r)]
+                [session-id (if (= NULL x) nil x)])))}))
 
 (defonce ^:private sessions (atom {}))
 
-(defonce ^:private elision-store (soft-store #(list `fetch %) p/unreachable))
+(defonce ^:private elision-store (soft-store #(list `fetch %)))
 (defn fetch [id]
-  (let [x ((:get elision-store) id)]
+  (if-some [[session-id x] ((:get elision-store) id)]
     (cond
-      (= p/unreachable x) x
       (instance? unrepl.print.ElidedKVs x) x
       (string? x) x
       (instance? unrepl.print.MimeContent x) x
-      :else (seq x))))
+      :else (seq x))
+    p/unreachable))
 
 (defn session [id]
   (some-> @sessions (get id) deref))
@@ -356,7 +356,7 @@
                 *in* in
                 *file* "unrepl-session"
                 *source-path* "unrepl-session"
-                p/*elide* (:put elision-store)
+                p/*elide* (partial (:put elision-store) session-id)
                 p/*string-length* p/*string-length*
                 write write-here]
         (.setContextClassLoader (Thread/currentThread) slcl)
