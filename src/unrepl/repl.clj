@@ -12,7 +12,7 @@
   [parent f]
   (let [define-class (doto (.getDeclaredMethod ClassLoader "defineClass" (into-array [String (Class/forName "[B") Integer/TYPE Integer/TYPE]))
                        (.setAccessible true))]
-    (proxy [ClassLoader] [parent]
+    (proxy [clojure.lang.DynamicClassLoader] [parent]
       (findResource [name]
         (when-some  [bytes (f :resource name)]
           (let [file (doto (java.io.File/createTempFile "unrepl-sideload-" (str "-" (re-find #"[^/]*$" name)))
@@ -21,7 +21,7 @@
             (-> file .toURI .toURL))))
       (findClass [name]
         (if-some  [bytes (f :class name)]
-          (.invoke define-class this (to-array [name bytes (int 0) (int (count bytes))]))
+          (.defineClass ^clojure.lang.DynamicClassLoader this name bytes nil)
           (throw (ClassNotFoundException. name)))))))
 
 (defn ^java.io.Writer tagging-writer
