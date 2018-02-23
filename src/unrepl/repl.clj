@@ -150,18 +150,20 @@
 
 (defonce ^:private sessions (atom {}))
 
+(defn session [id]
+  (some-> @sessions (get id) deref))
+
 (defonce ^:private elision-store (soft-store #(list `fetch %)))
 (defn fetch [id]
   (if-some [[session-id x] ((:get elision-store) id)]
-    (cond
-      (instance? unrepl.print.ElidedKVs x) x
-      (string? x) x
-      (instance? unrepl.print.MimeContent x) x
-      :else (seq x))
+    (unrepl.print.WithBindings.
+      (select-keys (some-> session-id session :bindings) [#'*print-length* #'*print-level* #'p/*string-length* #'p/*elide*])
+      (cond
+        (instance? unrepl.print.ElidedKVs x) x
+        (string? x) x
+        (instance? unrepl.print.MimeContent x) x
+        :else (seq x)))
     p/unreachable))
-
-(defn session [id]
-  (some-> @sessions (get id) deref))
 
 (defn interrupt! [session-id eval]
   (let [{:keys [^Thread thread eval-id promise]}

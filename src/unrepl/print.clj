@@ -112,6 +112,12 @@
               (recur (rest vs) (inc i))))
           (print-on write (tagged-literal 'unrepl/... (*elide* vs)) rem-depth))))))
 
+(defrecord WithBindings [bindings x]
+  MachinePrintable
+  (-print-on [_ write rem-depth]
+    (with-bindings bindings
+      (-print-on x write rem-depth))))
+
 (defrecord ElidedKVs [s]
   MachinePrintable
   (-print-on [_ write rem-depth]
