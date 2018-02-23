@@ -243,6 +243,12 @@
           (finally ~@(for [v (take-nth 2 bindings)]
                        `(.flush ~(vary-meta v assoc :tag 'java.io.Writer)))))))
 
+(defn- non-eliding-write [x]
+  (binding [*print-length* Long/MAX_VALUE
+            *print-level* Long/MAX_VALUE
+            p/*string-length* Long/MAX_VALUE]
+    (write x)))
+
 (defn start []
   (with-local-vars [in-eval false
                     unrepl false
@@ -283,34 +289,32 @@
                             (var-set unrepl true)
                             (flush)
                             (set! *out* edn-out)
-                            (binding [*print-length* Long/MAX_VALUE
-                                      *print-level* Long/MAX_VALUE
-                                      p/*string-length* Long/MAX_VALUE]
-                              (write [:unrepl/hello {:session session-id
-                                                     :actions (into
-                                                               {:exit `(exit! ~session-id)
-                                                                :start-aux `(start-aux ~session-id)
-                                                                :log-eval
-                                                                `(some-> ~session-id session :log-eval)
-                                                                :log-all
-                                                                `(some-> ~session-id session :log-all)
-                                                                :print-limits
-                                                                `(let [bak# {:unrepl.print/string-length p/*string-length*
-                                                                             :unrepl.print/coll-length *print-length*
-                                                                             :unrepl.print/nesting-depth *print-level*}]
-                                                                   (some->> ~(tagged-literal 'unrepl/param :unrepl.print/string-length) (set! p/*string-length*))
-                                                                   (some->> ~(tagged-literal 'unrepl/param :unrepl.print/coll-length) (set! *print-length*))
-                                                                   (some->> ~(tagged-literal 'unrepl/param :unrepl.print/nesting-depth) (set! *print-level*))
-                                                                   bak#)
-                                                                :set-source
-                                                                `(unrepl/do
-                                                                   (set-file-line-col ~session-id
-                                                                                      ~(tagged-literal 'unrepl/param :unrepl/sourcename)
-                                                                                      ~(tagged-literal 'unrepl/param :unrepl/line)
-                                                                                      ~(tagged-literal 'unrepl/param :unrepl/column)))
-                                                                :unrepl.jvm/start-side-loader
-                                                                `(attach-sideloader! ~session-id)}
-                                                               #_ext-session-actions)}]))))
+                            (non-eliding-write
+                              [:unrepl/hello {:session session-id
+                                              :actions (into
+                                                         {:exit `(exit! ~session-id)
+                                                          :start-aux `(start-aux ~session-id)
+                                                          :log-eval
+                                                          `(some-> ~session-id session :log-eval)
+                                                          :log-all
+                                                          `(some-> ~session-id session :log-all)
+                                                          :print-limits
+                                                          `(let [bak# {:unrepl.print/string-length p/*string-length*
+                                                                       :unrepl.print/coll-length *print-length*
+                                                                       :unrepl.print/nesting-depth *print-level*}]
+                                                             (some->> ~(tagged-literal 'unrepl/param :unrepl.print/string-length) (set! p/*string-length*))
+                                                             (some->> ~(tagged-literal 'unrepl/param :unrepl.print/coll-length) (set! *print-length*))
+                                                             (some->> ~(tagged-literal 'unrepl/param :unrepl.print/nesting-depth) (set! *print-level*))
+                                                             bak#)
+                                                          :set-source
+                                                          `(unrepl/do
+                                                             (set-file-line-col ~session-id
+                                                                                ~(tagged-literal 'unrepl/param :unrepl/sourcename)
+                                                                                ~(tagged-literal 'unrepl/param :unrepl/line)
+                                                                                ~(tagged-literal 'unrepl/param :unrepl/column)))
+                                                          :unrepl.jvm/start-side-loader
+                                                          `(attach-sideloader! ~session-id)}
+                                                #_ext-session-actions)}])))
 
           interruptible-eval
           (fn [form]
@@ -369,14 +373,14 @@
              :init #(swap! session-state assoc :bindings (get-thread-bindings))
              :prompt (fn []
                        (ensure-unrepl)
-                       (write [:prompt (into {:file *file*
-                                              :line (.getLineNumber *in*)
-                                              :column (.getColumnNumber *in*)
-                                              :offset (:offset *in*)}
-                                             (map (fn [v]
-                                                    (let [m (meta v)]
-                                                      [(symbol (name (ns-name (:ns m))) (name (:name m))) @v])))
-                                             (:prompt-vars @session-state))]))
+                       (non-eliding-write [:prompt (into {:file *file*
+                                                          :line (.getLineNumber *in*)
+                                                          :column (.getColumnNumber *in*)
+                                                          :offset (:offset *in*)}
+                                                     (map (fn [v]
+                                                            (let [m (meta v)]
+                                                              [(symbol (name (ns-name (:ns m))) (name (:name m))) @v])))
+                                                     (:prompt-vars @session-state))]))
              :read (fn [request-prompt request-exit]
                      (blame :read (let [id (var-set eval-id (inc @eval-id))
                                         line+col [(.getLineNumber *in*) (.getColumnNumber *in*)]
