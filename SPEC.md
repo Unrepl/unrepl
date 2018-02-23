@@ -30,12 +30,11 @@ To be more precise it's a stream of 2/3-item tuples, e.g. `[:read {:some :payloa
 2. Second component is the payload.
 3. Third (optional) component is a group id, meant to group together messages.
 
-Ten core tags are defined: `:unrepl/hello`, `:bye`, `:prompt`, `:read`, `:started-eval`, `:eval`, `:out`, `:err`, `:log`, and `:exception`. More tags are defined in standard [actions](#actions).
+Ten core tags are defined: `:unrepl/hello`, ``:prompt`, `:read`, `:started-eval`, `:eval`, `:out`, `:err`, `:log`, and `:exception`. More tags are defined in standard [actions](#actions).
 
 | Tag | Payload |
 |-----|---------|
 |`:unrepl/hello`|A map or nil|
-|`:bye`|A map or nil|
 |`:prompt`|A map or nil|
 |`:read` | A map |
 |`:started-eval`|A map or nil|
@@ -55,55 +54,9 @@ Its payload is a map which may have a `:actions` key mapping to another map of [
 
 This is how an unrepl implementation advertises its capabilities: by listing them along a machine-readable specification of the message needed to be sent to trigger them.
 
-The hello map may also have a `:session` key which is just an identifier (any type) allowing a client to recognize a session it has already visited (e.g. when getting a `:unrepl/hello` after a `:bye`).
+The hello map may also have a `:session` key which is just an identifier (any type) allowing a client to recognize a session it has already visited.
 
 The hello map may also have a `:about` key mapped to a map. The intent of the `:about` map is to contain information about the REPL implementation, supported language, running environment (VM, OS etc.).
-
-#### `:bye`
-
-The `:bye` message must be the last unrepl message before yielding control of the input and output streams (eg nesting another REPL... or [Eliza](https://en.wikipedia.org/wiki/ELIZA)).
-
-Implementation note: this can be detected when the expression being evaluated tries to read from the input. When evaluation returns, the unrepl impl can reassume control of the input and output stream. If it does so, its first message must be a `:unrepl/hello`.
-
-Its payload is a map.
-
-```clj
-(spec/def :unrepl/bye-payload
-  (spec/keys :opt-un [:unrepl.bye/reason :unrepl.bye/outs :unrepl/actions]))
-
-(spec/def :unrepl.bye/reason #{:disconnection :upgrade})
-
-;; describes what happen to background outputs after the `:bye` message: 
-(spec/def :unrepl.bye/outs
-  #{:muted ; they are muted (think `/dev/null`) 
-    :blocked ; writing threads are blocked
-    :closed ; they are closed (unless handled, the IO exception kills the writer)
-    :cobbled}) ; everything is cobbled together (like with a plain repl) 
-```
-
-
-Example:
-
-```clj
-< [:prompt {:ns #object[clojure.lang.Namespace 0x2d352c62 "unrepl.core"], :*warn-on-reflection* nil}]
-> (loop [] (let [c (char (.read *in*))] (case c \# :ciao (do (println "RAW" c) (recur)))))
-< [:started-eval {} 1]
-< [:bye nil]
-> A
-< RAW A
-< RAW 
-<
-> ABC
-< RAW A
-< RAW B
-< RAW C
-< RAW 
-< 
-> # 
-< [:unrepl/hello {:actions {}}]
-< [:eval :ciao 1]
-< [:prompt {:ns #object[clojure.lang.Namespace 0x2d352c62 "unrepl.core"], :*warn-on-reflection* nil}]
-```
 
 #### `:exception`
 
@@ -328,35 +281,6 @@ No parameter. Aborts the current running evaluation. Upon success a `[:interrupt
 No parameter. Transforms the current running evaluation in a Future. Upon success returns true (to the control repl) and the evaluation (in the main repl) immediatly returns `[:eval a-future id]`.
 
 Upon completion of the future a `[:bg-eval value id]` is sent (on the main repl).
-
-#### Bye actions
-(Advertised in `:bye` messages.)
-
-##### `:reattach-outs`
-
-No parameter.
-
-Redirects all outs to the repl (unrepl or not) in which the action has been issued. 
-
-##### `:set-mute-mode`
-
-__DEPRECATED__
-
-By default all spurious output is blocked after a `:bye` message.
-
-Parameter:
-
-```clj
-(spec/def :unrepl/mute-mode #{:block :mute :redirect})
-```
-
-Returns true on success.
-
-This actions expects a parameter `:unrepl/mute-mode` which can be one of:
-
- * `:block` (default behavior),
- * `:mute` (aka `/dev/null`),
- * `:redirect` which redirects all outs to the control repl in which the action has been issued. 
 
 ## License
 

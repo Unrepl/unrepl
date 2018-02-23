@@ -73,7 +73,7 @@
 
 (def ^:dynamic write)
 
-(defn unrepl-reader [^java.io.Reader r before-read]
+(defn unrepl-reader [^java.io.Reader r]
   (let [offset (atom 0)
         offset! #(swap! offset + %)]
     (proxy [clojure.lang.LineNumberingPushbackReader clojure.lang.ILookup] [r]
@@ -82,17 +82,14 @@
         ([k not-found] (case k :offset @offset not-found)))
       (read
         ([]
-         (before-read)
          (let [c (proxy-super read)]
            (when-not (neg? c) (offset! 1))
            c))
         ([cbuf]
-         (before-read)
          (let [n (proxy-super read cbuf)]
            (when (pos? n) (offset! n))
            n))
         ([cbuf off len]
-         (before-read)
          (let [n (proxy-super read cbuf off len)]
            (when (pos? n) (offset! n))
            n)))
@@ -250,9 +247,7 @@
     (write x)))
 
 (defn start []
-  (with-local-vars [in-eval false
-                    unrepl false
-                    eval-id 0
+  (with-local-vars [eval-id 0
                     prompt-vars #{#'*ns* #'*warn-on-reflection*}
                     current-eval-future nil]
     (let [session-id (keyword (gensym "session"))
@@ -265,14 +260,7 @@
                                  java.io.BufferedWriter.
                                  (doto schedule-writer-flush!)))
           edn-out (scheduled-writer :out (fn [x] (binding [p/*string-length* Integer/MAX_VALUE] (write-here x))))
-          ensure-raw-repl (fn []
-                            (when (and @in-eval @unrepl) ; reading from eval!
-                              (var-set unrepl false)
-                              (write [:bye {:reason :upgrade :actions {}}])
-                              (flush)
-                              ; (reset! aw (blocking-write))
-                              (set! *out* raw-out)))
-          in (unrepl-reader *in* ensure-raw-repl)
+          in (unrepl-reader *in*)
           session-state (atom {:current-eval {}
                                :in in
                                :write-atom aw
@@ -284,37 +272,34 @@
                                :side-loader (atom nil)
                                :prompt-vars #{#'*ns* #'*warn-on-reflection*}})
           current-eval-thread+promise (atom nil)
-          ensure-unrepl (fn []
-                          (when-not @unrepl
-                            (var-set unrepl true)
-                            (flush)
-                            (set! *out* edn-out)
-                            (non-eliding-write
-                              [:unrepl/hello {:session session-id
-                                              :actions (into
-                                                         {:exit `(exit! ~session-id)
-                                                          :start-aux `(start-aux ~session-id)
-                                                          :log-eval
-                                                          `(some-> ~session-id session :log-eval)
-                                                          :log-all
-                                                          `(some-> ~session-id session :log-all)
-                                                          :print-limits
-                                                          `(let [bak# {:unrepl.print/string-length p/*string-length*
-                                                                       :unrepl.print/coll-length *print-length*
-                                                                       :unrepl.print/nesting-depth *print-level*}]
-                                                             (some->> ~(tagged-literal 'unrepl/param :unrepl.print/string-length) (set! p/*string-length*))
-                                                             (some->> ~(tagged-literal 'unrepl/param :unrepl.print/coll-length) (set! *print-length*))
-                                                             (some->> ~(tagged-literal 'unrepl/param :unrepl.print/nesting-depth) (set! *print-level*))
-                                                             bak#)
-                                                          :set-source
-                                                          `(unrepl/do
-                                                             (set-file-line-col ~session-id
-                                                                                ~(tagged-literal 'unrepl/param :unrepl/sourcename)
-                                                                                ~(tagged-literal 'unrepl/param :unrepl/line)
-                                                                                ~(tagged-literal 'unrepl/param :unrepl/column)))
-                                                          :unrepl.jvm/start-side-loader
-                                                          `(attach-sideloader! ~session-id)}
-                                                #_ext-session-actions)}])))
+          say-hello
+          (fn []
+            (non-eliding-write
+              [:unrepl/hello {:session session-id
+                              :actions (into
+                                         {:exit `(exit! ~session-id)
+                                          :start-aux `(start-aux ~session-id)
+                                          :log-eval
+                                          `(some-> ~session-id session :log-eval)
+                                          :log-all
+                                          `(some-> ~session-id session :log-all)
+                                          :print-limits
+                                          `(let [bak# {:unrepl.print/string-length p/*string-length*
+                                                       :unrepl.print/coll-length *print-length*
+                                                       :unrepl.print/nesting-depth *print-level*}]
+                                             (some->> ~(tagged-literal 'unrepl/param :unrepl.print/string-length) (set! p/*string-length*))
+                                             (some->> ~(tagged-literal 'unrepl/param :unrepl.print/coll-length) (set! *print-length*))
+                                             (some->> ~(tagged-literal 'unrepl/param :unrepl.print/nesting-depth) (set! *print-level*))
+                                             bak#)
+                                          :set-source
+                                          `(unrepl/do
+                                             (set-file-line-col ~session-id
+                                                                ~(tagged-literal 'unrepl/param :unrepl/sourcename)
+                                                                ~(tagged-literal 'unrepl/param :unrepl/line)
+                                                                ~(tagged-literal 'unrepl/param :unrepl/column)))
+                                          :unrepl.jvm/start-side-loader
+                                          `(attach-sideloader! ~session-id)}
+                                #_ext-session-actions)}]))
 
           interruptible-eval
           (fn [form]
@@ -332,8 +317,7 @@
                                    {:interrupt (list `interrupt! session-id @eval-id)
                                     :background (list `background! session-id @eval-id)}}
                                   @eval-id])
-                          (let [v (with-bindings {in-eval true}
-                                    (blame :eval (eval form)))]
+                          (let [v (blame :eval (eval form))]
                             (deliver p {:eval v :bindings (get-thread-bindings)})
                             v)
                           (catch Throwable t
@@ -358,7 +342,7 @@
                                 (f k x))))]
       (swap! session-state assoc :class-loader slcl)
       (swap! sessions assoc session-id session-state)
-      (binding [*out* raw-out
+      (binding [*out* edn-out
                 *err* (tagging-writer :err write)
                 *in* in
                 *file* "unrepl-session"
@@ -370,9 +354,10 @@
         (with-bindings {clojure.lang.Compiler/LOADER slcl}
           (try
             (m/repl
-             :init #(swap! session-state assoc :bindings (get-thread-bindings))
+             :init #(do
+                      (swap! session-state assoc :bindings (get-thread-bindings))
+                      (say-hello))
              :prompt (fn []
-                       (ensure-unrepl)
                        (non-eliding-write [:prompt (into {:file *file*
                                                           :line (.getLineNumber *in*)
                                                           :column (.getColumnNumber *in*)
@@ -407,10 +392,8 @@
                                   *out* (scheduled-writer :out id write)]
                                  (interruptible-eval form))))
              :print (fn [x]
-                      (ensure-unrepl)
                       (write [:eval x @eval-id]))
              :caught (fn [e]
-                       (ensure-unrepl)
                        (let [{:keys [::ex ::phase]
                               :or {ex e phase :repl}} (ex-data e)]
                          (write [:exception {:ex ex :phase phase} @eval-id]))))
@@ -427,8 +410,6 @@
       (start)
       (finally
         (.setContextClassLoader (Thread/currentThread) cl)))))
-
-;; WIP for extensions
 
 (defmacro ensure-ns [[fully-qualified-var-name & args :as expr]]
   `(do
