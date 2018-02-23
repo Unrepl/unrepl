@@ -156,6 +156,7 @@ Clojure values are machine-printed to EDN.
 
 #### Filling the gap
 
+ * Vars (e.g. `#'map`) are printed as `#clojure/var clojure.core/map`.
  * Ratios (e.g. `4/3`) are printed as `#unrepl/ratio [4 3]`.
  * Classes are printed as `#unrepl.java/class ClassName` or `#unrepl.java/class [ClassName]` for arrays (with no bounds on the nesting).
  * Namespaces are printed as `#unrepl/ns name.sp.ace`.
