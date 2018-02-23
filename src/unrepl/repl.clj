@@ -336,6 +336,7 @@
                 (swap! session-state update :current-eval
                        into {:eval-id @eval-id :promise p :future f})
                 (let [{:keys [ex eval bindings]} @p]
+                  (swap! session-state assoc :bindings bindings)
                   (doseq [[var val] bindings
                           :when (not (identical? val (original-bindings var)))]
                     (var-set var val))
@@ -363,6 +364,7 @@
         (with-bindings {clojure.lang.Compiler/LOADER slcl}
           (try
             (m/repl
+             :init #(swap! session-state assoc :bindings (get-thread-bindings))
              :prompt (fn []
                        (ensure-unrepl)
                        (write [:prompt (into {:file *file*
