@@ -30,7 +30,7 @@ To be more precise it's a stream of 2/3-item tuples, e.g. `[:read {:some :payloa
 2. Second component is the payload.
 3. Third (optional) component is a group id, meant to group together messages.
 
-Ten core tags are defined: `:unrepl/hello`, ``:prompt`, `:read`, `:started-eval`, `:eval`, `:out`, `:err`, `:log`, and `:exception`. More tags are defined in standard [actions](#actions).
+Ten core tags are defined: `:unrepl/hello`, `:prompt`, `:read`, `:started-eval`, `:eval`, `:out`, `:err`, `:log`, and `:exception`. More tags are defined in standard [actions](#actions).
 
 | Tag | Payload |
 |-----|---------|
