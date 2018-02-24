@@ -16,9 +16,9 @@ The blob is a piece of clojure code sent to bootstrap an unrepl implementation. 
 
 ## Why this hypermedia nonsense if the unrepl implementation is private to the client?
 
-Well it decouples the client and its unrepl implementation, making it easier for the client maintainer to reuse or share code of their server implementation with other tools maintainer.
+Well it decouples the client and its unrepl implementation, making it easier for the client maintainer to reuse or share code of their server implementation with other tools maintainers.
 
-Furthermore if you start considering that a client may ship several blobs (eg one Clojure, one for Clojurescript) then it allows the clent to behave properly independently on the nature of the endpoint. 
+Furthermore if you start considering that a client may ship several blobs (eg one for Clojure, one for Clojurescript) then it allows the client to behave properly independently on the nature of the endpoint. 
 
 ## Usage
 
