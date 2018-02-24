@@ -282,7 +282,7 @@
                                                                 ~(tagged-literal 'unrepl/param :unrepl/column)))
                                           :unrepl.jvm/start-side-loader
                                           `(attach-sideloader! ~session-id)}
-                                #_ext-session-actions)}]))
+                                #_ext-session-actions{})}]))
 
           interruptible-eval
           (fn [form]

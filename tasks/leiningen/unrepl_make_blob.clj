@@ -5,7 +5,7 @@
 
 (defn- gen-blob [^String code session-actions]
   (-> "resources/unrepl" java.io.File. .mkdirs)
-  (let [code (.replace code "#_ext-session-actions" session-actions)]
+  (let [code (.replace code "#_ext-session-actions{}" session-actions)]
     (prn-str
       `(let [prefix# (name (gensym))
              code# (.replaceAll ~code "(?<!:)unrepl\\.(?:repl|print)" (str "$0" prefix#))
