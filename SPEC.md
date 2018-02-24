@@ -10,6 +10,18 @@ You can ask questions and share feedback on the `#unrepl` channel on the Clojuri
 
 2017-11-23: change in map elisions, now the key is always `#unrepl/... nil` and the value contains the actual elision.
 
+## Interaction model
+
+The client may setup several connections with the server.
+
+Connections usually starts as plain REPLs and are subsequently upgraded to something else.
+
+The first connection created is typically meant for user input (and exclusively for user input, it must not be used for commands) and is upgraded by sending a piece of code colloquially referred to as "the blob". Upon successful upgrade the client receives a `:unrepl/hello` message which describes how to set up other connections. This connection is generally called the user connection or the user repl or even just `user`.
+
+There are two other common types of connections:
+ * repl connections meant for control of the user repls, most often referred to as `aux` or auxiliary/ancillary connections;
+ * sideloader connections meant to allow the client to provide local clojure code, resources and java classes for dynamic loading by the (potentially remote) server.
+
 ## Spec
 
 ### Reserved keywords and extensions
@@ -220,7 +232,7 @@ Upgrades another connection as an auxilliary (for tooling purpose) unREPL sessio
 
 ##### `:unrepl.jvm/start-side-loader`
 
-Upgrades the control REPL where it is issued to a sideloading session.
+Upgrades the plain repl connection where it is issued to a sideloading session.
 
 When a sideloading session is started, the JVM will ask the client for classes or resources it does not have. Basically, this allows the extension of the classpath.
 
@@ -238,7 +250,7 @@ No parameters.
 
 `:log-all` returns a function of one argument (`msg` conforming to `:unrepl/log-msg`) that will print `[:log msg nil]`.
 
-Client software should use these values to hook up appenders for the user log facilities. For example, assuming `Timbre` as the logging library and a value of `(clojure.core/some-> :session329  unrepl.repl/session :log-eval)]` for `:log-eval` then the client can send this form to the repl (main or control):
+Client software should use these values to hook up appenders for the user log facilities. For example, assuming `Timbre` as the logging library and a value of `(clojure.core/some-> :session329  unrepl.repl/session :log-eval)]` for `:log-eval` then the client can send this form to the `aux` repl:
 
 ```clj
 (let [w (clojure.core/some-> :session329  unrepl.repl/session :log-eval)]
@@ -274,7 +286,7 @@ No parameter. Aborts the current running evaluation. Upon success a `[:interrupt
 
 ##### `:background`
 
-No parameter. Transforms the current running evaluation in a Future. Upon success returns true (to the control repl) and the evaluation (in the main repl) immediatly returns `[:eval a-future id]`.
+No parameter. Transforms the current running evaluation in a Future. Upon success returns true (on `aux`) and the evaluation (on `user`) immediatly returns `[:eval a-future id]`.
 
 Upon completion of the future a `[:bg-eval value id]` is sent (on the main repl).
 
