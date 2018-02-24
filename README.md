@@ -2,11 +2,23 @@
 
 A REPL-centric approach to tooling, by means of a general purpose stream-based REPL protocol.
 
-Unrepl is the common base for a set of REPL protocols.  It is meant as an upgrade-path from a more basic [nREPL](https://github.com/clojure/tools.nrepl) or [Socket REPL](https://clojure.org/reference/repl_and_main#_launching_a_socket_server), and allows different Unrepl-based clients to implement their own extensions to the REPL protocol (e.g. for IDE integration).  Such Unrepl-based cients would send their server payload ("blob") through the basic REPL connection into the target process, to upgrade the server side of this connection with the desired features.  After this upgrade, the client could use the new features on the existing REPL connection.
+Unrepl is the common base for a set of REPL protocols.  It is meant as an upgrade-path from a more basic [nREPL](https://github.com/clojure/tools.nrepl) or [Socket REPL](https://clojure.org/reference/repl_and_main#_launching_a_socket_server), and allows different Unrepl-based clients to implement their own extensions to the REPL protocol (e.g. for IDE integration).  Such Unrepl-based clients would send their own server payload ("blob") through the basic REPL connection into the target process, to upgrade the server side of this connection with the desired features.  After this upgrade, the client could use the new features on the existing REPL connection.
 
 The benefit of this process is, that the target process does not need to include REPL code beyond Socket REPL, which is already included in Clojure 1.8+.  Everything else is loaded only when needed and can be extended according to the needs of the client.  Due to the shared common base, it should be easy to share parts of the server implementation between different Unrepl derivatives.
 
 Thus Unrepl is intended for toolsmiths and not something a regular user will usually come in direct contact with.  Assuming someone uses "MyIDE", they would setup a "MyIDE REPL" connection to their program from the "MyIDE" UI, and "MyIDE" would transparently upgrade the REPL connection to something they could brand as the "MyIDE REPL" experience, without the user noticing that something like Unrepl even exists.
+
+Unrepl is really a meant as a foundation for derivative private works used by clients.
+
+## What's "the blob"?
+
+The blob is a piece of clojure code sent to bootstrap an unrepl implementation. It's expected to be static and opaque.
+
+## Why this hypermedia nonsense if the unrepl implementation is private to the client?
+
+Well it decouples the client and its unrepl implementation, making it easier for the client maintainer to resue or share code of their server implementation with pther tools maintainer.
+
+Furthermore if you start considering that a client may ship several blobs (eg one Clojure, one for Clojurescript) then it allows the clent to behave properly independently on the nature of the endpoint. 
 
 ## Usage
 
