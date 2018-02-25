@@ -3,9 +3,52 @@
     [clojure.edn :as edn]
     [clojure.string :as str]))
 
+(defn- strip-spaces-and-comments [s]
+  #_(I had this nice #"(?s)(?:\s|;[^\n\r]*)+|((?:[^;\"\\\s]|\\.|\"(?:[^\"\\]|\\.)*\")+)"
+      but it generates stack overflows...
+      so let's write the state machine!)
+  (let [sb (StringBuilder.)]
+    (letfn [(regular [c]
+              (case c
+                \; comment
+                \# dispatch
+                \" (do (.append sb c) string)
+                \\ (do (.append sb c) regular-esc)
+                (\newline \return \tab \space \,) strip
+                (do (.append sb c) regular)))
+            (strip [c]
+              (case c
+                (\newline \return \tab \space \,) strip
+                (do (.append sb " ") (regular c))))
+            (dispatch [c]
+              (case c
+                \! comment
+                \" (do (.append sb "#\"") string)
+                (do (-> sb (.append "#") (.append c)) regular)))
+            (comment [c]
+              (case c
+                \newline strip
+                comment))
+            (string [c]
+              (.append sb c)
+              (case c
+                \" regular
+                \\ string-esc
+                string))
+            (string-esc [c]
+              (.append sb c)
+              string)
+            (regular-esc [c]
+              (.append sb c)
+              string)]
+      (reduce
+        #(%1 %2)
+        regular s))
+    (str sb)))
+
 (defn- gen-blob [^String code session-actions]
   (-> "resources/unrepl" java.io.File. .mkdirs)
-  (let [code (.replace code "#_ext-session-actions{}" session-actions)]
+  (let [code (strip-spaces-and-comments (.replace code "#_ext-session-actions{}" session-actions))]
     (prn-str
       `(let [prefix# (name (gensym))
              code# (.replaceAll ~code "(?<!:)unrepl\\.(?:repl|print)" (str "$0" prefix#))
@@ -39,6 +82,6 @@
                                 (str/replace #"#unrepl-make-blob-(?:syntax|un)?quote " {"#unrepl-make-blob-syntaxquote " "`"
                                                                                         "#unrepl-make-blob-unquote " "~"
                                                                                         "#unrepl-make-blob-quote " "'"}))]
-          (spit target (gen-blob code session-actions)))
+          (spit target (str (strip-spaces-and-comments (gen-blob code session-actions)) "\n")))
         (println "The arguments must be: a target file name and an EDN map.")))))
 
