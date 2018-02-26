@@ -44,12 +44,20 @@
                 \# dispatch
                 \" (do (.append sb c) string)
                 \\ (do (.append sb c) regular-esc)
-                (\newline \return \tab \space \,) strip
+                (\newline \return) strip-nl
+                (\tab \space \,) strip
                 (do (.append sb c) regular)))
             (strip [c]
               (case c
-                (\newline \return \tab \space \,) strip
+                (\newline \return) strip-nl
+                (\tab \space \,) strip
+                \; comment
                 (do (.append sb " ") (regular c))))
+            (strip-nl [c]
+              (case c
+                (\newline \return \tab \space \,) strip-nl
+                \; comment
+                (do (.append sb "\n") (regular c))))
             (dispatch [c]
               (case c
                 \! comment
@@ -57,7 +65,7 @@
                 (do (-> sb (.append "#") (.append c)) regular)))
             (comment [c]
               (case c
-                \newline strip
+                \newline strip-nl
                 comment))
             (string [c]
               (.append sb c)
@@ -78,25 +86,12 @@
 
 (defn- gen-blob [^String code session-actions]
   (-> "resources/unrepl" java.io.File. .mkdirs)
-  (let [code (strip-spaces-and-comments (.replace code "#_ext-session-actions{}" session-actions))
-        suffix (str "$" (-> code (.getBytes "UTF-8") sha1 java.io.ByteArrayInputStream. base64-encode))
-        code (str/replace code #"(?<!:)unrepl\.(?:repl|print)" (fn [x] (str x suffix)))
-        main-ns (symbol (str "unrepl.repl" suffix))]
-    (str (strip-spaces-and-comments
-           (str
-             (prn-str
-               `(let [nop# (constantly nil)
-                      e# (atom (if (find-ns '~main-ns) nop# eval))]
-                  (clojure.main/repl
-                    :read (fn [rp# re#]
-                            (let [x# (read)] (case x# unrepl/fin re# x#)))
-                    :prompt nop#
-                    :eval (fn [x#] (@e# x#))
-                    :print nop#
-                    :caught (fn [e#] (set! *e e#) (reset! e# nop#)))
-                  (prn [:unrepl.upgrade/failed])))
-             code))
-     "\nunrepl/fin\n(ns user)(" main-ns "/start)\n")))
+  (let [template (slurp "src/unrepl/blob-template.clj")
+        code (.replace code "#_ext-session-actions{}" session-actions)
+        code (str/replace template "<BLOB-PAYLOAD>" code)
+        code (strip-spaces-and-comments code)
+        suffix (str "$" (-> code (.getBytes "UTF-8") sha1 java.io.ByteArrayInputStream. base64-encode))]
+    (str (str/replace code #"(?<!:)unrepl\.(?:repl|print)" (fn [x] (str x suffix))) "\n"))) ; newline to force eval by the repl
 
 (defn unrepl-make-blob
   ([project] (unrepl-make-blob project "resources/unrepl/blob.clj" "{}"))
