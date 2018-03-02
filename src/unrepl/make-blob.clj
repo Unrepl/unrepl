@@ -1,4 +1,4 @@
-(ns leiningen.unrepl-make-blob
+(ns unrepl.make-blob
   (:require
     [clojure.java.io :as io]
     [clojure.edn :as edn]
@@ -85,20 +85,20 @@
     (str sb)))
 
 (defn- gen-blob [^String code session-actions]
-  (-> "resources/unrepl" java.io.File. .mkdirs)
-  (let [template (slurp "src/unrepl/blob-template.clj")
+  (let [template (slurp (io/resource "unrepl/blob-template.clj"))
         code (.replace code "#_ext-session-actions{}" session-actions)
         code (str/replace template "<BLOB-PAYLOAD>" code)
         code (strip-spaces-and-comments code)
         suffix (str "$" (-> code (.getBytes "UTF-8") sha1 java.io.ByteArrayInputStream. base64-encode))]
     (str (str/replace code #"(?<!:)unrepl\.(?:repl|print)" (fn [x] (str x suffix))) "\n"))) ; newline to force eval by the repl
 
-(defn unrepl-make-blob
-  ([project] (unrepl-make-blob project "resources/unrepl/blob.clj" "{}"))
-  ([project target session-actions]
+(defn -main
+  ([] (-main "resources/unrepl/blob.clj" "{}"))
+  ([target session-actions]
+    (-> target io/file .getParentFile .mkdirs)
     (let [session-actions-source (if (re-find #"^\s*\{" session-actions) session-actions (slurp session-actions))
           session-actions-map (edn/read-string {:default (fn [tag data] (tagged-literal 'unrepl-make-blob-unquote (list 'tagged-literal (tagged-literal 'unrepl-make-blob-quote tag) data)))} session-actions-source)
-          code (str (slurp "src/unrepl/print.clj") (slurp "src/unrepl/repl.clj"))]
+          code (str (slurp (io/resource "unrepl/print.clj")) (slurp (io/resource "unrepl/repl.clj")))]
       (if (map? session-actions-map)
         (let [session-actions-map (into session-actions-map
                                     (map (fn [[k v]]

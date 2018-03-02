@@ -35,7 +35,7 @@ cd unrepl
 # start a plain repl (non unrepl, non nrepl)
 java -cp `lein classpath` -Dclojure.server.repl="{:port555,:accept clojure.core.server/repl,:server-daemon false}" clojure.main -e nil &
 # generate the blob
-lein unrepl-make-blob
+clj -m unrepl/make-blob
 # connect, upgrade and enjoy!
 rlwrap cat resources/unrepl/blob.clj - | nc localhost 5555
 ```
