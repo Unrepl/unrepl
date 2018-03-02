@@ -98,7 +98,7 @@
     (-> target io/file .getParentFile .mkdirs)
     (let [session-actions-source (if (re-find #"^\s*\{" session-actions) session-actions (slurp session-actions))
           session-actions-map (edn/read-string {:default (fn [tag data] (tagged-literal 'unrepl-make-blob-unquote (list 'tagged-literal (tagged-literal 'unrepl-make-blob-quote tag) data)))} session-actions-source)
-          code (str (slurp (io/resource "unrepl/print.clj")) (slurp (io/resource "unrepl/repl.clj")))]
+          code (apply str (map #(slurp (io/resource %)) ["unrepl/core.clj" "unrepl/print.clj" "unrepl/repl.clj"]))]
       (if (map? session-actions-map)
         (let [session-actions-map (into session-actions-map
                                     (map (fn [[k v]]

@@ -1,7 +1,8 @@
 (ns unrepl.print
   (:require [clojure.string :as str]
             [clojure.edn :as edn]
-            [clojure.main :as main]))
+            [clojure.main :as main]
+            [unrepl.core :as unrepl]))
 
 (defprotocol MachinePrintable
   (-print-on [x write rem-depth]))
@@ -64,9 +65,7 @@
   "Function of 1 argument which returns the elision."
   (constantly nil))
 
-(def ^:dynamic *string-length* 80)
-
-(def ^:dynamic *max-colls* 100)
+(def ^:dynamic *max-colls* 100) ; TODO
 
 (def ^:dynamic *realize-on-print*
   "Set to false to avoid realizing lazy sequences."
@@ -281,7 +280,7 @@
       unrepl/... (binding ; don't elide the elision 
                   [*print-length* Long/MAX_VALUE
                    *print-level* Long/MAX_VALUE
-                   *string-length* Long/MAX_VALUE]
+                   unrepl/*string-length* Long/MAX_VALUE]
                    (write (str "#" (:tag x) " "))
                    (print-on write (:form x) Long/MAX_VALUE))
       (print-tag-lit-on write (:tag x) (:form x) rem-depth)))
@@ -317,11 +316,11 @@
     (print-tag-lit-on write "unrepl/pattern" (str x) rem-depth))
   String
   (-print-on [x write rem-depth]
-    (if (<= (count x) *string-length*)
+    (if (<= (count x) unrepl/*string-length*)
       (write (as-str x))
-      (let [i (if (and (Character/isHighSurrogate (.charAt ^String x (dec *string-length*)))
-                       (Character/isLowSurrogate (.charAt ^String x *string-length*)))
-                (inc *string-length*) *string-length*)
+      (let [i (if (and (Character/isHighSurrogate (.charAt ^String x (dec unrepl/*string-length*)))
+                       (Character/isLowSurrogate (.charAt ^String x unrepl/*string-length*)))
+                (inc unrepl/*string-length*) unrepl/*string-length*)
             prefix (subs x 0 i)
             rest (subs x i)]
         (if (= rest "")
@@ -367,12 +366,12 @@
     (binding [*print-readably* true
               *print-length* (or *print-length* 10)
               *print-level* (or *print-level* 8)
-              *string-length* (or *string-length* 72)]
+              unrepl/*string-length* (or unrepl/*string-length* 72)]
       (print-on write x (or *print-level* 8))
       (str out))))
 
 (defn full-edn-str [x]
   (binding [*print-length* Long/MAX_VALUE
             *print-level* Long/MAX_VALUE
-            *string-length* Integer/MAX_VALUE]
+            unrepl/*string-length* Integer/MAX_VALUE]
     (edn-str x)))

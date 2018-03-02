@@ -5,7 +5,7 @@
     :prompt nop
     :eval #(@e %)
     :print nop
-    :caught #(do (set! *e %) (reset! e nop) (prn [:unrepl.upgrade/failed]))))
+    :caught #(do (set! *e %) (reset! e nop) (prn [:unrepl.upgrade/failed %]))))
 <BLOB-PAYLOAD>
 <<<FIN
 (clojure.core/ns user)
