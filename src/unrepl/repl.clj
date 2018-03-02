@@ -61,14 +61,6 @@
         (.write w "\n")
         (.flush w)))))
 
-(defn fuse-write [awrite]
-  (fn [x]
-    (when-some [w @awrite]
-      (try
-        (w x)
-        (catch Throwable t
-          (reset! awrite nil))))))
-
 (def ^:dynamic write)
 
 (defn unrepl-reader [^java.io.Reader r]
@@ -170,17 +162,6 @@
                {:eval future
                 :bindings {}})))))
 
-(defn reattach-outs! [session-id]
-  (some-> session-id session :write-atom
-          (reset!
-           (if (bound? #'write)
-             write
-             (let [out *out*]
-               (fn [x]
-                 (binding [*out* out
-                           *print-readably* true]
-                   (prn x))))))))
-
 (defn attach-sideloader! [session-id]
   (prn '[:unrepl.jvm.side-loader/hello])
   (some-> session-id session :side-loader
@@ -236,8 +217,7 @@
                     current-eval-future nil]
     (let [session-id (keyword (gensym "session"))
           raw-out *out*
-          aw (atom (atomic-write raw-out))
-          write-here (fuse-write aw)
+          write-here (atomic-write raw-out)
           schedule-writer-flush! (writers-flushing-repo 50) ; 20 fps (flushes per second)
           scheduled-writer (fn [& args]
                              (-> (apply tagging-writer args)
@@ -247,7 +227,6 @@
           in (unrepl-reader *in*)
           session-state (atom {:current-eval {}
                                :in in
-                               :write-atom aw
                                :log-eval (fn [msg]
                                            (when (bound? eval-id)
                                              (write [:log msg @eval-id])))
@@ -381,10 +360,7 @@
                               :or {ex e phase :repl}} (ex-data e)]
                          (write [:exception {:ex ex :phase phase} @eval-id]))))
             (finally
-              (.setContextClassLoader (Thread/currentThread) cl))))
-        (write [:bye {:reason :disconnection
-                      :outs :muted
-                      :actions {:reattach-outs `(reattach-outs! ~session-id)}}])))))
+              (.setContextClassLoader (Thread/currentThread) cl))))))))
 
 (defn start-aux [session-id]
   (let [cl (.getContextClassLoader (Thread/currentThread))]
