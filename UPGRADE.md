@@ -8,7 +8,7 @@ Either you get `[:unrepl.upgrade/failed]` or `[:unrepl/hello ...]` on the repl o
 
 Each use of the blob creates gensymed namespaces.
 
-You can customize the blob: enter `clj -m unrepl/make-blob <target-file> <session actions map>`. Where the session actions map can be either a string or a `.edn` file. For example:
+You can customize the blob: enter `clj -m unrepl.make-blob <target-file> <session actions map>`. Where the session actions map can be either a string or a `.edn` file. For example:
 
 ```
 # As a string
