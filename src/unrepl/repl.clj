@@ -245,7 +245,7 @@
                                              (some->> ~(tagged-literal 'unrepl/param :unrepl.print/nesting-depth) (set! *print-level*))
                                              bak#)
                                           :set-source
-                                          `(unrepl/do
+                                          `(~'unrepl/do
                                              (set-file-line-col ~session-id
                                                                 ~(tagged-literal 'unrepl/param :unrepl/sourcename)
                                                                 ~(tagged-literal 'unrepl/param :unrepl/line)
