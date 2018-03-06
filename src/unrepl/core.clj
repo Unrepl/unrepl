@@ -1,4 +1,5 @@
-(ns unrepl.core)
+(ns unrepl.core
+  (:refer-clojure :exclude [read eval print]))
 
 (def ^:once ^:private loaded-by "unrepl.repl")
 
@@ -10,3 +11,6 @@
             *print-level* Long/MAX_VALUE
             *string-length* Long/MAX_VALUE]
     (write x)))
+
+
+(declare ^:once ^:dynamic read ^:once ^:dynamic print ^:once ^:dynamic eval)

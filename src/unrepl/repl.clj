@@ -186,17 +186,25 @@
       (.setLineNumber in line)
       (.set field in (int col)))))
 
-(defn- writers-flushing-repo [max-latency-ms]
-  (let [writers (java.util.WeakHashMap.)
-        flush-them-all #(locking writers
-                          (doseq [^java.io.Writer w (.keySet writers)]
-                            (.flush w)))]
-    (.scheduleAtFixedRate
-     (java.util.concurrent.Executors/newScheduledThreadPool 1)
-     flush-them-all
-     max-latency-ms max-latency-ms java.util.concurrent.TimeUnit/MILLISECONDS)
+(def schedule-flushes!
+  (let [thread-pool (java.util.concurrent.Executors/newScheduledThreadPool 1)
+        max-latency-ms 20] ; 50 flushes per second
     (fn [w]
-      (locking writers (.put writers w nil)))))
+      (let [wr (java.lang.ref.WeakReference. w)
+            vfut (volatile! nil)]
+        (vreset! vfut
+          (.scheduleAtFixedRate
+            thread-pool
+            (fn []
+              (if-some [^java.io.Writer w (.get wr)]
+                (.flush w)
+                (.cancel ^java.util.concurrent.Future @vfut)))
+            max-latency-ms max-latency-ms java.util.concurrent.TimeUnit/MILLISECONDS))))))
+
+(defn scheduled-writer [& args]
+  (-> (apply tagging-writer args)
+    java.io.BufferedWriter.
+    (doto schedule-flushes!)))
 
 (defmacro ^:private flushing [bindings & body]
   `(binding ~bindings
@@ -204,23 +212,39 @@
           (finally ~@(for [v (take-nth 2 bindings)]
                        `(.flush ~(vary-meta v assoc :tag 'java.io.Writer)))))))
 
+(def ^:dynamic eval-id)
+
+(defn unrepl-read [request-prompt request-exit]
+  (blame :read (let [id (set! eval-id (inc eval-id))
+                     line+col [(.getLineNumber *in*) (.getColumnNumber *in*)]
+                     offset (:offset *in*)
+                     r (m/repl-read request-prompt request-exit)
+                     line+col' [(.getLineNumber *in*) (.getColumnNumber *in*)]
+                     offset' (:offset *in*)
+                     len (- offset' offset)]
+                 (unrepl/write [:read {:from line+col :to line+col'
+                                     :offset offset
+                                     :len (- offset' offset)}
+                              id])
+                 (if (and (seq?  r) (= (first r) 'unrepl/do))
+                   (do
+                     (flushing [*err* (tagging-writer :err id unrepl/non-eliding-write)
+                                *out* (scheduled-writer :out id unrepl/non-eliding-write)]
+                       (eval (cons 'do (next r))))
+                     request-prompt)
+                   r))))
+
 (defn start []
-  (with-local-vars [eval-id 0
-                    prompt-vars #{#'*ns* #'*warn-on-reflection*}
+  (with-local-vars [prompt-vars #{#'*ns* #'*warn-on-reflection*}
                     current-eval-future nil]
     (let [session-id (keyword (gensym "session"))
           raw-out *out*
-          schedule-writer-flush! (writers-flushing-repo 50) ; 20 fps (flushes per second)
-          scheduled-writer (fn [& args]
-                             (-> (apply tagging-writer args)
-                                 java.io.BufferedWriter.
-                                 (doto schedule-writer-flush!)))
           in (unrepl-reader *in*)
           session-state (atom {:current-eval {}
                                :in in
                                :log-eval (fn [msg]
                                            (when (bound? eval-id)
-                                             (unrepl/write [:log msg @eval-id])))
+                                             (unrepl/write [:log msg eval-id])))
                                :log-all (fn [msg]
                                           (unrepl/write [:log msg nil]))
                                :side-loader (atom nil)
@@ -268,9 +292,9 @@
                           (unrepl/non-eliding-write
                             [:started-eval
                              {:actions
-                              {:interrupt (list `interrupt! session-id @eval-id)
-                               :background (list `background! session-id @eval-id)}}
-                             @eval-id])
+                              {:interrupt (list `interrupt! session-id eval-id)
+                               :background (list `background! session-id eval-id)}}
+                             eval-id])
                           (let [v (blame :eval (eval form))]
                             (deliver p {:eval v :bindings (get-thread-bindings)})
                             v)
@@ -278,7 +302,7 @@
                             (deliver p {:ex t :bindings (get-thread-bindings)})
                             (throw t)))))]
                 (swap! session-state update :current-eval
-                       into {:eval-id @eval-id :promise p :future f})
+                       into {:eval-id eval-id :promise p :future f})
                 (let [{:keys [ex eval bindings]} @p]
                   (swap! session-state assoc :bindings bindings)
                   (doseq [[var val] bindings
@@ -303,7 +327,9 @@
                 *source-path* "unrepl-session"
                 p/*elide* (partial (:put elision-store) session-id)
                 unrepl/*string-length* unrepl/*string-length*
-                unrepl/write (atomic-write raw-out)]
+                unrepl/write (atomic-write raw-out)
+                unrepl/read unrepl-read
+                eval-id 0]
         (.setContextClassLoader (Thread/currentThread) slcl)
         (with-bindings {clojure.lang.Compiler/LOADER slcl}
           (try
@@ -320,36 +346,17 @@
                                                                    (let [m (meta v)]
                                                                      [(symbol (name (ns-name (:ns m))) (name (:name m))) @v])))
                                                             (:prompt-vars @session-state))]))
-             :read (fn [request-prompt request-exit]
-                     (blame :read (let [id (var-set eval-id (inc @eval-id))
-                                        line+col [(.getLineNumber *in*) (.getColumnNumber *in*)]
-                                        offset (:offset *in*)
-                                        r (m/repl-read request-prompt request-exit)
-                                        line+col' [(.getLineNumber *in*) (.getColumnNumber *in*)]
-                                        offset' (:offset *in*)
-                                        len (- offset' offset)]
-                                    (unrepl/write [:read {:from line+col :to line+col'
-                                                        :offset offset
-                                                        :len (- offset' offset)}
-                                                 id])
-                                    (if (and (seq?  r) (= (first r) 'unrepl/do))
-                                      (do
-                                        (flushing [*err* (tagging-writer :err id unrepl/non-eliding-write)
-                                                   *out* (scheduled-writer :out id unrepl/non-eliding-write)]
-                                          (eval (cons 'do (next r))))
-                                        request-prompt)
-                                      r))))
+             :read unrepl/read
              :eval (fn [form]
-                     (let [id @eval-id]
-                       (flushing [*err* (tagging-writer :err id unrepl/non-eliding-write)
-                                  *out* (scheduled-writer :out id unrepl/non-eliding-write)]
-                         (interruptible-eval form))))
+                     (flushing [*err* (tagging-writer :err eval-id unrepl/non-eliding-write)
+                                *out* (scheduled-writer :out eval-id unrepl/non-eliding-write)]
+                       (interruptible-eval form)))
              :print (fn [x]
-                      (unrepl/write [:eval x @eval-id]))
+                      (unrepl/write [:eval x eval-id]))
              :caught (fn [e]
                        (let [{:keys [::ex ::phase]
                               :or {ex e phase :repl}} (ex-data e)]
-                         (unrepl/write [:exception {:ex ex :phase phase} @eval-id]))))
+                         (unrepl/write [:exception {:ex ex :phase phase} eval-id]))))
             (finally
               (.setContextClassLoader (Thread/currentThread) cl))))))))
 
