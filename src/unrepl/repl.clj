@@ -64,11 +64,30 @@
 
 (defn unrepl-reader [^java.io.Reader r]
   (let [offset (atom 0)
+        last-reset (volatile! {:col-off 0 :line 0 :name (str (gensym "unrepl-reader-"))})
         offset! #(swap! offset + %)]
-    (proxy [clojure.lang.LineNumberingPushbackReader clojure.lang.ILookup] [r]
+    (proxy [clojure.lang.LineNumberingPushbackReader clojure.lang.ILookup clojure.lang.IFn] [r]
+      (getColumnNumber []
+        (let [{:keys [line col-off]} @last-reset
+              off (if (= (.getLineNumber this) line) col-off 0)]
+          (+ off (proxy-super getColumnNumber))))
+      (invoke [{:keys [line col name]}]
+        (locking this
+          (when line (.setLineNumber this line))
+          (let [line (.getLineNumber this)
+                col-off (if col 0 (- col (.getColumnNumber this)))
+                name (or name (:name @last-reset))]
+            (vreset! last-reset {:line line :col-off col-off :name name})))
+        (:coords this))
       (valAt
         ([k] (get this k nil))
-        ([k not-found] (case k :offset @offset not-found)))
+        ([k not-found] (case k
+                         :offset @offset
+                         :coords {:offset @offset
+                                  :line (.getLineNumber this)
+                                  :col (.getColumnNumber this)
+                                  :name (:name @last-reset)}
+                         not-found)))
       (read
         ([]
          (let [c (proxy-super read)]
@@ -175,16 +194,10 @@
   (let [o (Object.)] (locking o (.wait o))))
 
 (defn set-file-line-col [session-id file line col]
-  (when-some [^java.lang.reflect.Field field
-              (->> clojure.lang.LineNumberingPushbackReader
-                   .getDeclaredFields
-                   (some #(when (= "_columnNumber" (.getName ^java.lang.reflect.Field %)) %)))]
-    (doto field (.setAccessible true)) ; sigh
-    (when-some [in (some-> session-id session :in)]
-      (set! *file* file)
-      (set! *source-path* file)
-      (.setLineNumber in line)
-      (.set field in (int col)))))
+  (when-some [in (some-> session-id session :in)]
+    (set! *file* file)
+    (set! *source-path* file)
+    (in {:line line :col col :name file})))
 
 (def schedule-flushes!
   (let [thread-pool (java.util.concurrent.Executors/newScheduledThreadPool 1)
