@@ -62,22 +62,25 @@
         (.write w "\n")
         (.flush w)))))
 
+(definterface ILocatedReader
+  (setCoords [coords-map]))
+
 (defn unrepl-reader [^java.io.Reader r]
   (let [offset (atom 0)
-        last-reset (volatile! {:col-off 0 :line 0 :name (str (gensym "unrepl-reader-"))})
+        last-reset (volatile! {:col-off 0 :line 0 :file (str (gensym "unrepl-reader-"))})
         offset! #(swap! offset + %)]
-    (proxy [clojure.lang.LineNumberingPushbackReader clojure.lang.ILookup clojure.lang.IFn] [r]
+    (proxy [clojure.lang.LineNumberingPushbackReader clojure.lang.ILookup ILocatedReader] [r]
       (getColumnNumber []
         (let [{:keys [line col-off]} @last-reset
               off (if (= (.getLineNumber this) line) col-off 0)]
           (+ off (proxy-super getColumnNumber))))
-      (invoke [{:keys [line col name]}]
+      (setCoords [{:keys [line col name]}]
         (locking this
           (when line (.setLineNumber this line))
           (let [line (.getLineNumber this)
-                col-off (if col 0 (- col (.getColumnNumber this)))
-                name (or name (:name @last-reset))]
-            (vreset! last-reset {:line line :col-off col-off :name name})))
+                col-off (if col (- col (.getColumnNumber this)) 0)
+                name (or name (:file @last-reset))]
+            (vreset! last-reset {:line line :col-off col-off :file name})))
         (:coords this))
       (valAt
         ([k] (get this k nil))
@@ -86,7 +89,7 @@
                          :coords {:offset @offset
                                   :line (.getLineNumber this)
                                   :col (.getColumnNumber this)
-                                  :name (:name @last-reset)}
+                                  :file (:file @last-reset)}
                          not-found)))
       (read
         ([]
@@ -118,6 +121,17 @@
         (when-some [s (proxy-super readLine)]
           (offset! (count s))
           s)))))
+
+(defn ensure-unrepl-reader 
+  ([rdr]
+    (if (instance? ILocatedReader rdr)
+      rdr
+      (unrepl-reader rdr)))
+  ([rdr name]
+    (if (instance? ILocatedReader rdr)
+      rdr
+      (doto (unrepl-reader rdr)
+        (.setCoords {:file name})))))
 
 (defn soft-store [make-action]
   (let [ids-to-session+refs (atom {})
@@ -228,18 +242,22 @@
 (def ^:dynamic eval-id)
 
 (defn unrepl-read [request-prompt request-exit]
+  (blame :read 
+    (let [coords (:coords *in*)]
+      (try
+        (m/repl-read request-prompt request-exit)
+        (finally
+          (let [coords' (:coords *in*)]
+            (unrepl/write [:read {:file (:file coords)
+                                  :from [(:line coords) (:col coords)] :to [(:line coords') (:col coords')]
+                                  :offset (:offset coords)
+                                  :len (- (:offset coords') (:offset coords))}
+                           eval-id])))))))
+
+(defn unrepl-repl-read [request-prompt request-exit]
   (blame :read (let [id (set! eval-id (inc eval-id))
-                     line+col [(.getLineNumber *in*) (.getColumnNumber *in*)]
-                     offset (:offset *in*)
-                     r (m/repl-read request-prompt request-exit)
-                     line+col' [(.getLineNumber *in*) (.getColumnNumber *in*)]
-                     offset' (:offset *in*)
-                     len (- offset' offset)]
-                 (unrepl/write [:read {:from line+col :to line+col'
-                                     :offset offset
-                                     :len (- offset' offset)}
-                              id])
-                 (if (and (seq?  r) (= (first r) 'unrepl/do))
+                     r (unrepl/read request-prompt request-exit)]
+                 (if (and (seq?  r) (= (first r) 'unrepl/do)) ; TODO remove this, related to issue #36
                    (do
                      (flushing [*err* (tagging-writer :err id unrepl/non-eliding-write)
                                 *out* (scheduled-writer :out id unrepl/non-eliding-write)]
@@ -252,7 +270,7 @@
                     current-eval-future nil]
     (let [session-id (keyword (gensym "session"))
           raw-out *out*
-          in (unrepl-reader *in*)
+          in (ensure-unrepl-reader *in* (str "unrepl-" (name session-id)))
           session-state (atom {:current-eval {}
                                :in in
                                :log-eval (fn [msg]
@@ -336,8 +354,8 @@
       (binding [*out* (scheduled-writer :out unrepl/non-eliding-write)
                 *err* (tagging-writer :err unrepl/non-eliding-write)
                 *in* in
-                *file* "unrepl-session"
-                *source-path* "unrepl-session"
+                *file* (-> in :coords :name)
+                *source-path* *file*
                 p/*elide* (partial (:put elision-store) session-id)
                 unrepl/*string-length* unrepl/*string-length*
                 unrepl/write (atomic-write raw-out)
@@ -359,7 +377,7 @@
                                                                    (let [m (meta v)]
                                                                      [(symbol (name (ns-name (:ns m))) (name (:name m))) @v])))
                                                             (:prompt-vars @session-state))]))
-             :read unrepl/read
+             :read unrepl-repl-read
              :eval (fn [form]
                      (flushing [*err* (tagging-writer :err eval-id unrepl/non-eliding-write)
                                 *out* (scheduled-writer :out eval-id unrepl/non-eliding-write)]
