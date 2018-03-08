@@ -4,6 +4,10 @@
             [clojure.main :as main]
             [unrepl.core :as unrepl]))
 
+(def defaults {#'*print-length* 10
+               #'*print-level* 8
+               #'unrepl/*string-length* 72})
+
 (defprotocol MachinePrintable
   (-print-on [x write rem-depth]))
 
@@ -114,7 +118,7 @@
 (defrecord WithBindings [bindings x]
   MachinePrintable
   (-print-on [_ write rem-depth]
-    (with-bindings bindings
+    (with-bindings (merge-with #(or %1 %2) bindings defaults)
       (-print-on x write rem-depth))))
 
 (defrecord ElidedKVs [s]
