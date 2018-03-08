@@ -211,7 +211,7 @@
   (when-some [in (some-> session-id session :in)]
     (set! *file* file)
     (set! *source-path* file)
-    (in {:line line :col col :name file})))
+    (.setCoords ^ILocatedReader in {:line line :col col :name file})))
 
 (def schedule-flushes!
   (let [thread-pool (java.util.concurrent.Executors/newScheduledThreadPool 1)
