@@ -368,6 +368,7 @@
              :init #(do
                       (swap! session-state assoc :bindings (get-thread-bindings))
                       (say-hello))
+             :need-prompt (constantly true)
              :prompt (fn []
                        (unrepl/non-eliding-write [:prompt (into {:file *file*
                                                                  :line (.getLineNumber *in*)
