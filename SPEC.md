@@ -70,6 +70,29 @@ The hello map may also have a `:session` key which is just an identifier (any ty
 
 The hello map may also have a `:about` key mapped to a map. The intent of the `:about` map is to contain information about the REPL implementation, supported language, running environment (VM, OS etc.).
 
+#### `:prompt`
+
+`:prompt` messages constitute the main punctuation of the output stream: each `:prompt` is the header of an iteration of the REP loop. There can't be an evaluation without a `:prompt`. `:prompt` messages are the most basic way of synchronizing the client states with the REPL.
+
+The payload provides general information about the unrepl session, covering two topics:
+
+ * Information about the current input state.
+ * Qualified symbols (var names) mapped to their respective values.
+
+e.g.
+
+```clj
+[:prompt {:file "unrepl-session", :line 1, :column 1, :offset 0, clojure.core/*warn-on-reflection* nil, clojure.core/*ns* #unrepl/ns user} 42]
+```
+
+Where `:offset` is the number of characters (well UTF-16 code units) from the start of the unrepl session. *Line-delimiting sequences are normalized to one character* (`\n`) -- so if the client sends a `CRLF` the offset is only increased by 1.
+
+The group-id is the one that will be used for the next evaluation, if any.
+
+It's possible to get iterations with no evaluation (for example after skippable top-level input: comment and whitespace).
+
+Clients willing to display a user prompt in the way traditionally done by `clojure.main` should only consider `:prompt` message whose `:column` is `1`. 
+
 #### `:exception`
 
 The payload is a map with a required key `:ex` which maps to the exception, and a second optional key `:phase` which can take 5 values:
@@ -88,21 +111,6 @@ The payload is a map with a required key `:ex` which maps to the exception, and 
 ```
 
 The arguments will be machine-printed and as such could be elided.
-
-#### `:prompt`
-
-The payload provides general information about the unrepl session, covering two topics:
-
- * Information about the current input state.
- * Qualified symbols (var names) mapped to their respective values.
-
-e.g.
-
-```clj
-[:prompt {:file "unrepl-session", :line 1, :column 1, :offset 0, clojure.core/*warn-on-reflection* nil, clojure.core/*ns* #unrepl/ns user}]
-```
-
-Where `:offset` is the number of characters (well UTF-16 code units) from the start of the unrepl session. *Line-delimiting sequences are normalized to one character* (`\n`) -- so if the client sends a `CRLF` the offset is only increased by 1.
 
 #### `:read`
 
