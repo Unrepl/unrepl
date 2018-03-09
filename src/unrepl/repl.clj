@@ -253,7 +253,7 @@
     (let [c (.read s)]
       (cond
         (interrupted?) (do (.unread s c) false)
-        (and comment (= c (int \newline))) (recur false)
+        (= c (int \newline)) false
         comment (recur comment)
         (= c -1) true
         (= c (int \;)) (recur true)
@@ -284,7 +284,6 @@
                        (eval (cons 'do (next r))))
                      request-prompt)
                    r))))
-
 (defn start []
   (with-local-vars [prompt-vars #{#'*ns* #'*warn-on-reflection*}
                     current-eval-future nil]
