@@ -262,18 +262,18 @@
 
 (defn unrepl-read [request-prompt request-exit]
   (blame :read 
-    (let [coords (:coords *in*)]
-      (try
-        (if (seek-readable *in*)
+    (if (seek-readable *in*)
+      (let [coords (:coords *in*)]
+        (try 
           (read {:read-cond :allow :eof request-exit} *in*)
-          request-prompt)
-        (finally
-          (let [coords' (:coords *in*)]
-            (unrepl/write [:read {:file (:file coords)
-                                  :from [(:line coords) (:col coords)] :to [(:line coords') (:col coords')]
-                                  :offset (:offset coords)
-                                  :len (- (:offset coords') (:offset coords))}
-                           eval-id])))))))
+          (finally
+            (let [coords' (:coords *in*)]
+              (unrepl/write [:read {:file (:file coords)
+                                    :from [(:line coords) (:col coords)] :to [(:line coords') (:col coords')]
+                                    :offset (:offset coords)
+                                    :len (- (:offset coords') (:offset coords))}
+                             eval-id])))))
+      request-prompt)))
 
 (defn unrepl-repl-read [request-prompt request-exit]
   (blame :read (let [r (unrepl/read request-prompt request-exit)]
