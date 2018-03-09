@@ -214,7 +214,7 @@
   (enqueue session-id #(when-some [in (some-> session-id session :in)]
                          (set! *file* file)
                          (set! *source-path* file)
-                         (.setCoords ^ILocatedReader in {:line line :col col :name file}))))
+                         (.setCoords ^ILocatedReader in {:line line :col col :file file}))))
 
 (def schedule-flushes!
   (let [thread-pool (java.util.concurrent.Executors/newScheduledThreadPool 1)
@@ -368,7 +368,7 @@
       (binding [*out* (scheduled-writer :out unrepl/non-eliding-write)
                 *err* (tagging-writer :err unrepl/non-eliding-write)
                 *in* in
-                *file* (-> in :coords :name)
+                *file* (-> in :coords :file)
                 *source-path* *file*
                 p/*elide* (partial (:put elision-store) session-id)
                 unrepl/*string-length* unrepl/*string-length*
