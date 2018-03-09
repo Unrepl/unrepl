@@ -8,6 +8,9 @@
                #'*print-level* 8
                #'unrepl/*string-length* 72})
 
+(defn ensure-defaults [bindings]
+  (merge-with #(or %1 %2) bindings defaults))
+
 (defprotocol MachinePrintable
   (-print-on [x write rem-depth]))
 
@@ -118,8 +121,8 @@
 (defrecord WithBindings [bindings x]
   MachinePrintable
   (-print-on [_ write rem-depth]
-    (with-bindings (merge-with #(or %1 %2) bindings defaults)
-      (-print-on x write rem-depth))))
+    (with-bindings (ensure-defaults bindings)
+      (-print-on x write *print-level*))))
 
 (defrecord ElidedKVs [s]
   MachinePrintable
@@ -367,12 +370,12 @@
 (defn edn-str [x]
   (let [out (java.io.StringWriter.)
         write (fn [^String s] (.write out s))]
-    (binding [*print-readably* true
-              *print-length* (or *print-length* 10)
-              *print-level* (or *print-level* 8)
-              unrepl/*string-length* (or unrepl/*string-length* 72)]
-      (print-on write x (or *print-level* 8))
-      (str out))))
+    (print-on write
+      (WithBindings.
+        (into {#'*print-readably* true}
+          (select-keys (get-thread-bindings) [#'*print-length* #'*print-level* #'unrepl/*string-length*]))
+        x) 1)
+    (str out)))
 
 (defn full-edn-str [x]
   (binding [*print-length* Long/MAX_VALUE
