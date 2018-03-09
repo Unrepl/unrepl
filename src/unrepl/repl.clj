@@ -241,11 +241,32 @@
 
 (def ^:dynamic eval-id)
 
+(def ^:dynamic interrupted? (constantly false))
+
+(defn seek-readable
+  "Skips whitespace and comments on stream s. Returns true when a form may be read,
+  false otherwise.
+  Note that returning true does not guarantee that the next read will yield something.
+  (It may be EOF, or a discard #_ or a non-matching conditional...)"
+  [s]
+  (loop [comment false]
+    (let [c (.read s)]
+      (cond
+        (interrupted?) (do (.unread s c) false)
+        (and comment (= c (int \newline))) (recur false)
+        comment (recur comment)
+        (= c -1) true
+        (= c (int \;)) (recur true)
+        (or (Character/isWhitespace (char c)) (= c (int \,))) (recur comment)
+        :else (do (.unread s c) true)))))
+
 (defn unrepl-read [request-prompt request-exit]
   (blame :read 
     (let [coords (:coords *in*)]
       (try
-        (m/repl-read request-prompt request-exit)
+        (if (seek-readable *in*)
+          (read {:read-cond :allow :eof request-exit} *in*)
+          request-prompt)
         (finally
           (let [coords' (:coords *in*)]
             (unrepl/write [:read {:file (:file coords)
@@ -255,12 +276,11 @@
                            eval-id])))))))
 
 (defn unrepl-repl-read [request-prompt request-exit]
-  (blame :read (let [id (set! eval-id (inc eval-id))
-                     r (unrepl/read request-prompt request-exit)]
+  (blame :read (let [r (unrepl/read request-prompt request-exit)]
                  (if (and (seq?  r) (= (first r) 'unrepl/do)) ; TODO remove this, related to issue #36
                    (do
-                     (flushing [*err* (tagging-writer :err id unrepl/non-eliding-write)
-                                *out* (scheduled-writer :out id unrepl/non-eliding-write)]
+                     (flushing [*err* (tagging-writer :err eval-id unrepl/non-eliding-write)
+                                *out* (scheduled-writer :out eval-id unrepl/non-eliding-write)]
                        (eval (cons 'do (next r))))
                      request-prompt)
                    r))))
@@ -377,7 +397,8 @@
                                                             (map (fn [v]
                                                                    (let [m (meta v)]
                                                                      [(symbol (name (ns-name (:ns m))) (name (:name m))) @v])))
-                                                            (:prompt-vars @session-state))]))
+                                                            (:prompt-vars @session-state))
+                                                  (set! eval-id (inc eval-id))]))
              :read unrepl-repl-read
              :eval (fn [form]
                      (flushing [*err* (tagging-writer :err eval-id unrepl/non-eliding-write)
