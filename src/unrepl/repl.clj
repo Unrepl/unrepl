@@ -207,11 +207,14 @@
                    (some-> (edn/read {:eof nil} in) p/base64-decode)))))))
   (let [o (Object.)] (locking o (.wait o))))
 
+(defn enqueue [session-id f]
+  (some-> session-id session ^java.util.concurrent.BlockingQueue (:actions-queue) (.put f)))
+
 (defn set-file-line-col [session-id file line col]
-  (when-some [in (some-> session-id session :in)]
-    (set! *file* file)
-    (set! *source-path* file)
-    (.setCoords ^ILocatedReader in {:line line :col col :name file})))
+  (enqueue session-id #(when-some [in (some-> session-id session :in)]
+                         (set! *file* file)
+                         (set! *source-path* file)
+                         (.setCoords ^ILocatedReader in {:line line :col col :name file}))))
 
 (def schedule-flushes!
   (let [thread-pool (java.util.concurrent.Executors/newScheduledThreadPool 1)
@@ -275,21 +278,13 @@
                              eval-id])))))
       request-prompt)))
 
-(defn unrepl-repl-read [request-prompt request-exit]
-  (blame :read (let [r (unrepl/read request-prompt request-exit)]
-                 (if (and (seq?  r) (= (first r) 'unrepl/do)) ; TODO remove this, related to issue #36
-                   (do
-                     (flushing [*err* (tagging-writer :err eval-id unrepl/non-eliding-write)
-                                *out* (scheduled-writer :out eval-id unrepl/non-eliding-write)]
-                       (eval (cons 'do (next r))))
-                     request-prompt)
-                   r))))
 (defn start []
   (with-local-vars [prompt-vars #{#'*ns* #'*warn-on-reflection*}
                     current-eval-future nil]
     (let [session-id (keyword (gensym "session"))
           raw-out *out*
           in (ensure-unrepl-reader *in* (str "unrepl-" (name session-id)))
+          actions-queue (java.util.concurrent.LinkedBlockingQueue.)
           session-state (atom {:current-eval {}
                                :in in
                                :log-eval (fn [msg]
@@ -298,7 +293,8 @@
                                :log-all (fn [msg]
                                           (unrepl/write [:log msg nil]))
                                :side-loader (atom nil)
-                               :prompt-vars #{#'*ns* #'*warn-on-reflection*}})
+                               :prompt-vars #{#'*ns* #'*warn-on-reflection*}
+                               :actions-queue actions-queue})
           current-eval-thread+promise (atom nil)
           say-hello
           (fn []
@@ -319,11 +315,10 @@
                                              (some->> ~(tagged-literal 'unrepl/param :unrepl.print/nesting-depth) (set! *print-level*))
                                              bak#)
                                           :set-source
-                                          `(~'unrepl/do
-                                             (set-file-line-col ~session-id
-                                                                ~(tagged-literal 'unrepl/param :unrepl/sourcename)
-                                                                ~(tagged-literal 'unrepl/param :unrepl/line)
-                                                                ~(tagged-literal 'unrepl/param :unrepl/column)))
+                                          `(set-file-line-col ~session-id
+                                             ~(tagged-literal 'unrepl/param :unrepl/sourcename)
+                                             ~(tagged-literal 'unrepl/param :unrepl/line)
+                                             ~(tagged-literal 'unrepl/param :unrepl/column))
                                           :unrepl.jvm/start-side-loader
                                           `(attach-sideloader! ~session-id)}
                                 #_ext-session-actions{})}]))
@@ -379,7 +374,8 @@
                 unrepl/*string-length* unrepl/*string-length*
                 unrepl/write (atomic-write raw-out)
                 unrepl/read unrepl-read
-                eval-id 0]
+                eval-id 0
+                interrupted? #(.peek actions-queue)]
         (.setContextClassLoader (Thread/currentThread) slcl)
         (with-bindings {clojure.lang.Compiler/LOADER slcl}
           (try
@@ -389,6 +385,7 @@
                       (say-hello))
              :need-prompt (constantly true)
              :prompt (fn []
+                       (when-some [f (.poll actions-queue)] (f))
                        (unrepl/non-eliding-write [:prompt (into {:file *file*
                                                                  :line (.getLineNumber *in*)
                                                                  :column (.getColumnNumber *in*)
@@ -398,7 +395,7 @@
                                                                      [(symbol (name (ns-name (:ns m))) (name (:name m))) @v])))
                                                             (:prompt-vars @session-state))
                                                   (set! eval-id (inc eval-id))]))
-             :read unrepl-repl-read
+             :read unrepl/read
              :eval (fn [form]
                      (flushing [*err* (tagging-writer :err eval-id unrepl/non-eliding-write)
                                 *out* (scheduled-writer :out eval-id unrepl/non-eliding-write)]
