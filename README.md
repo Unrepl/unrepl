@@ -26,6 +26,7 @@ If you are a simple user, you don't need to care about unrepl proper, not even a
 
  * [Unravel](https://github.com/Unrepl/unravel) a command-line client,
  * [Spiral](https://github.com/Unrepl/spiral) an Emacs one.
+ * [Vimpire](https://bitbucket.org/kotarak/vimpire) ([git](https://github.com/kotarak/vimpire)) for Vim
 
 If you want to develop a client or just understand better what's happening under the hood then try:
 
