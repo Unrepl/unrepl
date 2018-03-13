@@ -278,7 +278,7 @@
                              eval-id])))))
       request-prompt)))
 
-(defn start []
+(defn start [ext-session-actions]
   (with-local-vars [prompt-vars #{#'*ns* #'*warn-on-reflection*}
                     current-eval-future nil]
     (let [session-id (keyword (gensym "session"))
@@ -321,7 +321,7 @@
                                              ~(tagged-literal 'unrepl/param :unrepl/column))
                                           :unrepl.jvm/start-side-loader
                                           `(attach-sideloader! ~session-id)}
-                                #_ext-session-actions{})}]))
+                                         ext-session-actions)}]))
 
           interruptible-eval
           (fn [form]

@@ -9,4 +9,4 @@
 <BLOB-PAYLOAD>
 <<<FIN
 (clojure.core/ns user)
-(unrepl.repl/start)
+(unrepl.repl/start (read))

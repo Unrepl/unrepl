@@ -86,11 +86,10 @@
 
 (defn- gen-blob [^String code session-actions]
   (let [template (slurp (io/resource "unrepl/blob-template.clj"))
-        code (.replace code "#_ext-session-actions{}" session-actions)
         code (str/replace template "<BLOB-PAYLOAD>" code)
         code (strip-spaces-and-comments code)
         suffix (str "$" (-> code (.getBytes "UTF-8") sha1 java.io.ByteArrayInputStream. base64-encode))]
-    (str (str/replace code #"(?<!:)unrepl\.(?:repl|print)" (fn [x] (str x suffix))) "\n"))) ; newline to force eval by the repl
+    (str (str/replace code #"(?<!:)unrepl\.(?:repl|print)" (fn [x] (str x suffix))) "\n" session-actions "\n"))) ; newline to force eval by the repl
 
 (defn -main
   ([] (-main "resources/unrepl/blob.clj" "{}"))
