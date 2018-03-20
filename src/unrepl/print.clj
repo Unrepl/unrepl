@@ -4,19 +4,25 @@
             [clojure.main :as main]
             [unrepl.core :as unrepl]))
 
+(def ^:dynamic *print-budget*)
+
 (def defaults {#'*print-length* 10
                #'*print-level* 8
                #'unrepl/*string-length* 72})
 
 (defn ensure-defaults [bindings]
-  (merge-with #(or %1 %2) bindings defaults))
+  (let [bindings (merge-with #(or %1 %2) bindings defaults)]
+    (assoc bindings #'*print-budget*
+      (long (min (* 1N (bindings #'*print-level*) (bindings #'*print-length*)) Long/MAX_VALUE)))))
 
 (defprotocol MachinePrintable
   (-print-on [x write rem-depth]))
 
 (defn print-on [write x rem-depth]
-  (let [rem-depth (dec rem-depth)]
-    (if (and (neg? rem-depth) (or (nil? *print-length*) (pos? *print-length*)))
+  (let [rem-depth (dec rem-depth)
+        budget (set! *print-budget* (dec *print-budget*))]
+    (if (and (or (neg? rem-depth) (neg? budget)) (pos? (or *print-length* 1)))
+      ; the (pos? (or *print-length* 1)) is here to prevent stack overflows
       (binding [*print-length* 0]
         (print-on write x 0))
       (do
@@ -92,7 +98,7 @@
   [write kvs rem-depth]
   (let [print-length *print-length*]
     (loop [kvs kvs i 0]
-      (if (< i print-length)
+      (if (and (< i print-length) (pos? *print-budget*))
         (when-some [[[k v] & kvs] (seq kvs)]
           (when (pos? i) (write ", "))
           (print-on write k rem-depth)
@@ -110,7 +116,7 @@
     (loop [vs vs i 0]
       (when-some [[v :as vs] (blame-seq vs)]
         (when (pos? i) (write " "))
-        (if (and (< i print-length) (may-print? vs))
+        (if (and (< i print-length) (pos? *print-budget*) (may-print? vs))
           (if (and (tagged-literal? v) (= (:tag v) 'unrepl/lazy-error))
             (print-on write v rem-depth)
             (do
@@ -287,6 +293,7 @@
       unrepl/... (binding ; don't elide the elision 
                   [*print-length* Long/MAX_VALUE
                    *print-level* Long/MAX_VALUE
+                   *print-budget* Long/MAX_VALUE
                    unrepl/*string-length* Long/MAX_VALUE]
                    (write (str "#" (:tag x) " "))
                    (print-on write (:form x) Long/MAX_VALUE))
@@ -369,12 +376,10 @@
 
 (defn edn-str [x]
   (let [out (java.io.StringWriter.)
-        write (fn [^String s] (.write out s))]
-    (print-on write
-      (WithBindings.
-        (into {#'*print-readably* true}
-          (select-keys (get-thread-bindings) [#'*print-length* #'*print-level* #'unrepl/*string-length*]))
-        x) 1)
+        write (fn [^String s] (.write out s))
+        bindings (select-keys (get-thread-bindings) [#'*print-length* #'*print-level* #'unrepl/*string-length*])]
+    (with-bindings (into (ensure-defaults bindings) {#'*print-readably* true})
+      (print-on write x *print-level*))
     (str out)))
 
 (defn full-edn-str [x]
