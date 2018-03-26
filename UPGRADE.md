@@ -8,13 +8,15 @@ Either you get `[:unrepl.upgrade/failed]` or `[:unrepl/hello ...]` on the repl o
 
 Each use of the blob creates gensymed namespaces.
 
-You can customize the blob: enter `clj -m unrepl.make-blob <target-file> <session actions map>`. Where the session actions map can be either a string or a `.edn` file. For example:
+You can customize the blob: enter `clj -m unrepl.make-blob -o <target-file> -a <session actions map>`. Where the session actions map can be either a string or a `.edn` file. For example:
 
 ```
 # As a string
-$> clj -m unrepl.make-blob foo-blob.clj '{:my.own/action (foo/bar #unrepl/param :baz)}'
+$> clj -m unrepl.make-blob -o foo-blob.clj -a '{:my.own/action (foo/bar #unrepl/param :baz)}'
 # As a file
-$> clj -m unrepl.make-blob foo-blob.clj custom-actions.edn
+$> clj -m unrepl.make-blob -o foo-blob.clj -a custom-actions.edn
 ```
 
 If a custom action has a qualified symbol as the first element (function symbol) for its topmost form, this qualified symbol's namespace will automatically be required on the first use of the action.
+
+Shading of the blob may be optionally turned of with the `--noshade` option.

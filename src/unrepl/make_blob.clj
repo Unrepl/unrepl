@@ -56,36 +56,58 @@
         regular s))
     (str sb)))
 
-(defn- gen-blob [session-actions]
+(defn- gen-blob [session-actions shade?]
   (let [template (slurp (io/resource "unrepl/blob-template.clj"))
-        shaded-code-sb (StringBuilder.)
-        shaded-libs (shade/shade 'unrepl.repl
-                      {:writer (fn [_ ^String code] (.append shaded-code-sb code))
-                       :except [#"clojure\..*" 'unrepl.core]})
-        code (-> template
-               (str/replace "unrepl.repl"
-                 (str (shaded-libs 'unrepl.repl)))
-               (str/replace "<BLOB-PAYLOAD>" (str shaded-code-sb)))]
+        code     (if shade?
+                   (let [shaded-code-sb (StringBuilder.)
+                         shaded-libs (shade/shade 'unrepl.repl
+                                                  {:writer (fn [_ ^String code] (.append shaded-code-sb code))
+                                                   :except [#"clojure\..*" 'unrepl.core]})]
+                     (-> template
+                       (str/replace "unrepl.repl"
+                                    (str (shaded-libs 'unrepl.repl)))
+                       (str/replace "<BLOB-PAYLOAD>" (str shaded-code-sb))))
+                   (let [read-deps (fn read-deps [deps nspace]
+                                     (reduce read-deps (conj deps nspace) (shade/deps nspace)))
+                         code      (StringBuilder.)]
+                     (doseq [nspace (remove #(shade/exception % #"clojure\..*") (distinct (read-deps () 'unrepl.repl)))]
+                       (when-let [rdr (shade/ns-reader nspace)]
+                         (with-open [rdr rdr]
+                           (.append code (slurp rdr)))))
+                     (str/replace template "<BLOB-PAYLOAD>" (str code))))]
     (str (strip-spaces-and-comments code) "\n" session-actions "\n"))) ; newline to force eval by the repl
 
 (defn -main
-  ([] (-main "resources/unrepl/blob.clj" "{}"))
-  ([target session-actions]
-    (-> target io/file .getParentFile .mkdirs)
-    (let [session-actions-source (if (re-find #"^\s*\{" session-actions) session-actions (slurp session-actions))
-          session-actions-map (edn/read-string {:default (fn [tag data] (tagged-literal 'unrepl-make-blob-unquote (list 'tagged-literal (tagged-literal 'unrepl-make-blob-quote tag) data)))} session-actions-source)]
-      (if (map? session-actions-map)
-        (let [session-actions-map (into session-actions-map
-                                    (map (fn [[k v]]
-                                           [k (tagged-literal 'unrepl-make-blob-syntaxquote
-                                                (if (and (seq? v) (symbol? (first v)) (namespace (first v)))
-                                                  (list 'unrepl.repl/ensure-ns v)
-                                                  v))]))
-                                    session-actions-map)
-              session-actions (-> session-actions-map pr-str 
-                                (str/replace #"#unrepl-make-blob-(?:syntax|un)?quote " {"#unrepl-make-blob-syntaxquote " "`"
-                                                                                        "#unrepl-make-blob-unquote " "~"
-                                                                                        "#unrepl-make-blob-quote " "'"}))]
-          (spit target (gen-blob session-actions)))
-        (println "The arguments must be: a target file name and an EDN map.")))))
+  ([& args]
+   (let [options (loop [args    (seq args)
+                        options {:shade? true
+                                 :session-actions "{}"
+                                 :target "resources/unrepl/blob.clj"}]
+                   (if args
+                     (condp contains? (first args)
+                       #{"-s" "--noshade"} (recur (next args) (assoc options :shade? false))
+                       #{"-o" "--output"}  (recur (nnext args) (assoc options :target (fnext args)))
+                       #{"-a" "--actions"} (recur (nnext args) (assoc options :session-actions (fnext args)))
+                       #{"-h" "--help"}    (do
+                                             (println "clj -m unrepl.make-blob [--noshade|-s] [--output|-o <file>] [--actions|-a <map-or-file>]")
+                                             (System/exit 1))
+                       (throw (ex-info "Unknown argument" {:arg (first args)})))
+                     options))
+         session-actions-source (if (re-find #"^\s*\{" (:session-actions options)) (:session-actions options) (slurp (:session-actions options)))
+         session-actions-map (edn/read-string {:default (fn [tag data] (tagged-literal 'unrepl-make-blob-unquote (list 'tagged-literal (tagged-literal 'unrepl-make-blob-quote tag) data)))} session-actions-source)]
+     (-> options :target io/file .getAbsoluteFile .getParentFile .mkdirs)
+     (if (map? session-actions-map)
+       (let [session-actions-map (into session-actions-map
+                                       (map (fn [[k v]]
+                                              [k (tagged-literal 'unrepl-make-blob-syntaxquote
+                                                                 (if (and (seq? v) (symbol? (first v)) (namespace (first v)))
+                                                                   (list 'unrepl.repl/ensure-ns v)
+                                                                   v))]))
+                                       session-actions-map)
+             session-actions (-> session-actions-map pr-str 
+                               (str/replace #"#unrepl-make-blob-(?:syntax|un)?quote " {"#unrepl-make-blob-syntaxquote " "`"
+                                                                                       "#unrepl-make-blob-unquote " "~"
+                                                                                       "#unrepl-make-blob-quote " "'"}))]
+         (spit (:target options) (gen-blob session-actions (:shade? options))))
+       (println "The arguments must be: a target file name and an EDN map.")))))
 
