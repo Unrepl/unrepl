@@ -44,6 +44,15 @@
 (defn hash64 [s]
   (-> s (.getBytes "UTF-8") sha1 java.io.ByteArrayInputStream. base64-encode))
 
+(defn exception
+  [ns-name except]
+  (cond
+    (or (map? except) (set? except)) (except ns-name)
+    (symbol? except) (when (= except ns-name) ns-name)
+    (instance? java.util.regex.Pattern except) (when (re-matches except (name ns-name)) ns-name)
+    (coll? except) (some #(exception ns-name %) except)
+    :else (throw (ex-info (str "Unexpected shading exception rule: " except) {:except except}))))
+
 (defn shade
   "Shade all namespaces (transitively) required by ns-name.
    Shaded code is written using the writer function: a function of two arguments:
