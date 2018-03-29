@@ -281,7 +281,14 @@
 (defn start [ext-session-actions]
   (with-local-vars [prompt-vars #{#'*ns* #'*warn-on-reflection*}
                     current-eval-future nil]
-    (let [session-id (keyword (gensym "session"))
+    (let [ext-session-actions
+          (into {}
+            (map (fn [[k v]]
+                   [k (if (and (seq? v) (symbol? (first v)) (namespace (first v)))
+                        (list `ensure-ns v)
+                        v)]))
+            ext-session-actions)
+          session-id (keyword (gensym "session"))
           raw-out *out*
           in (ensure-unrepl-reader *in* (str "unrepl-" (name session-id)))
           actions-queue (java.util.concurrent.LinkedBlockingQueue.)

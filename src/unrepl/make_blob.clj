@@ -97,13 +97,5 @@
          session-actions-map (edn/read-string {:default (fn [tag data] (tagged-literal 'unrepl-make-blob-unquote (list 'tagged-literal (tagged-literal 'unrepl-make-blob-quote tag) data)))} session-actions-source)]
      (-> options :target io/file .getAbsoluteFile .getParentFile .mkdirs)
      (if (map? session-actions-map)
-       (let [session-actions-map (into session-actions-map
-                                       (map (fn [[k v]]
-                                              [k (tagged-literal 'unrepl-make-blob-syntaxquote
-                                                                 (if (and (seq? v) (symbol? (first v)) (namespace (first v)))
-                                                                   (list 'unrepl.repl/ensure-ns v)
-                                                                   v))]))
-                                       session-actions-map)
-             session-actions (pr-str session-actions-map)]
-         (spit (:target options) (gen-blob session-actions options)))
+       (spit (:target options) (gen-blob (pr-str session-actions-map) options))
        (println "The arguments must be: a target file name and an EDN map.")))))
