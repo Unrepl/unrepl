@@ -57,15 +57,26 @@
   "Shade all namespaces (transitively) required by ns-name.
    Shaded code is written using the writer function: a function of two arguments:
    the shaded ns name (a symbol), the shaded code (a string).
-   Exceptions to shading are specified under the :except option.
+   Exceptions to shading are specified under the :except option, but are still written out.
+   Provided namespaces won't be shaded nor included.
    This option can be a regex, a symbol, a map (for explicit renames), or a
    collection of such exceptions.
-   The default exceptions is #\"clojure\\..*\", don't forget to reassert that if
-   you specify your own exceptions."
-  [ns-name {:keys [writer except] :or {except #"clojure\..*"}}]
-  (letfn [(rename [ns-name] (exception ns-name except))
+   The default exceptions are empty and provided is #\"clojure\\..*\", don't forget to reassert that if
+   you specify your own provided libs."
+  [ns-name {:keys [writer except provided] :or {provided #"clojure\..*"}}]
+  (letfn [(rename
+            ([ns-name] (rename ns-name except))
+            ([ns-name except]
+              (cond
+                (nil? except) nil
+                (or (map? except) (set? except)) (except ns-name)
+                (symbol? except) (when (= except ns-name) ns-name)
+                (instance? java.util.regex.Pattern except) (when (re-matches except (name ns-name)) ns-name)
+                (coll? except) (some #(rename ns-name %) except)
+                :else (throw (ex-info (str "Unexpected shading exception rule: " except) {:except except})))))
+          (provided? [ns-name] (rename ns-name provided))
           (shade [shaded-nses ns-name]
-            (if (or (shaded-nses ns-name) (rename ns-name))
+            (if (or (shaded-nses ns-name) (provided? ns-name))
               shaded-nses
               (let [shaded-nses (reduce shade shaded-nses (deps ns-name))
                     pat (when-some [nses (seq (keys shaded-nses))]
@@ -73,7 +84,7 @@
                     almost-shaded-code (cond-> (slurp (ns-reader ns-name))
                                          pat (str/replace pat #(name (shaded-nses (symbol %)))))
                     h64 (hash64 almost-shaded-code)
-                    shaded-ns-name (symbol (str ns-name "$" h64))
+                    shaded-ns-name (or (rename ns-name) (symbol (str ns-name "$" h64)))
                     shaded-code (str/replace almost-shaded-code (name ns-name) (name shaded-ns-name))]
                 (writer shaded-ns-name shaded-code)
                 (assoc shaded-nses ns-name shaded-ns-name))))]
