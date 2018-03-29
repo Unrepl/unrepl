@@ -104,9 +104,6 @@
                                                                    (list 'unrepl.repl/ensure-ns v)
                                                                    v))]))
                                        session-actions-map)
-             session-actions (-> session-actions-map pr-str
-                               (str/replace #"#unrepl-make-blob-(?:syntax|un)?quote " {"#unrepl-make-blob-syntaxquote " "`"
-                                                                                       "#unrepl-make-blob-unquote " "~"
-                                                                                       "#unrepl-make-blob-quote " "'"}))]
+             session-actions (pr-str session-actions-map)]
          (spit (:target options) (gen-blob session-actions options)))
        (println "The arguments must be: a target file name and an EDN map.")))))
