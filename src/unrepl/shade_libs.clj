@@ -106,6 +106,15 @@
     (coll? except) (some #(exception ns-name %) except)
     :else (throw (ex-info (str "Unexpected shading exception rule: " except) {:except except}))))
 
+(defn make-pattern [nses]
+  (->> nses (map name) (sort-by (comp - count))
+    (map #(java.util.regex.Pattern/quote %))
+    (str/join "|")
+    re-pattern))
+
+(defn shade-code [src shaded-nses]
+  (str/replace src (make-pattern (keys shaded-nses)) #(name (shaded-nses (symbol %)))))
+
 (defn shade
   "Shade all namespaces (transitively) required by ns-name.
    Shaded code is written using the writer function: a function of two arguments:
@@ -136,14 +145,13 @@
               (assoc shaded-nses ns-name (provided-alias ns-name))
               :else
               (let [shaded-nses (reduce shade shaded-nses (deps ns-name))
-                    pat (when-some [nses (->> shaded-nses keys (map name) seq)]
-                          (re-pattern (str "(?:" (str/join "|" (map #(java.util.regex.Pattern/quote %) nses))
-                                        ")(?=[/\\s,\\\";@^`~()\\[\\]{}]|$)"))) ; / or terminating macro chars
-                    almost-shaded-code (cond-> (slurp-ns ns-name)
-                                         pat (str/replace pat #(name (shaded-nses (symbol %)))))
+                    shaded-nses (assoc shaded-nses ns-name ns-name) ; temporary map the current name to itself to prevent rewrite
+                    almost-shaded-code (shade-code (slurp-ns ns-name) shaded-nses)
                     h64 (hash64 almost-shaded-code)
                     shaded-ns-name (or (rename ns-name) (symbol (str ns-name "$" h64)))
-                    shaded-code (str/replace almost-shaded-code (name ns-name) (name shaded-ns-name))]
+                    preserve-shaded-nses (assoc (zipmap (vals shaded-nses) (vals shaded-nses))
+                                           ns-name shaded-ns-name) ; avoid rewriting already rewritten nses
+                    shaded-code (shade-code (slurp-ns ns-name) preserve-shaded-nses)]
                 (writer shaded-ns-name shaded-code)
                 (assoc shaded-nses ns-name shaded-ns-name))))]
    (shade {} ns-name)))

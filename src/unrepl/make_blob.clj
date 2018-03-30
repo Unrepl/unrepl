@@ -58,20 +58,21 @@
 
 (defn- gen-blob [session-actions required-libs options]
   (let [template (slurp (io/resource "unrepl/blob-template.clj"))
-        code     (let [shaded-code-sb (StringBuilder.)
-                       shaded-libs (shade/shade 'unrepl.repl
-                                                (into options
-                                                       {:writer (fn [_ ^String code] (.append shaded-code-sb code))}))
-                       shaded-libs
-                       (reduce (fn [shaded-libs required-lib]
-                                 (shade/shade-to-dir required-lib (:libs-dir options)
-                                   (assoc options
-                                     :provided [#"clojure\..*" shaded-libs])))
-                         shaded-libs required-libs)]
-                   (-> template
-                     (str/replace "unrepl.repl" (str (shaded-libs 'unrepl.repl)))
-                     (str/replace "<BLOB-PAYLOAD>" (str shaded-code-sb))))]
-    (str (strip-spaces-and-comments code) "\n" session-actions "\n"))) ; newline to force eval by the repl
+        shaded-code-sb (StringBuilder.)
+        shaded-libs (shade/shade 'unrepl.repl
+                      (into options
+                        {:writer (fn [_ ^String code] (.append shaded-code-sb code))}))
+        shaded-libs
+        (reduce (fn [shaded-libs required-lib]
+                  (into shaded-libs
+                    (shade/shade-to-dir required-lib (:libs-dir options)
+                      (assoc options
+                        :provided [#"clojure\..*" shaded-libs]))))
+          shaded-libs required-libs)
+        code     (-> template
+                   (str/replace "unrepl.repl" (str (shaded-libs 'unrepl.repl)))
+                   (str/replace "<BLOB-PAYLOAD>" (str shaded-code-sb)))]
+    (str (strip-spaces-and-comments code) "\n" (shade/shade-code session-actions shaded-libs) "\n"))) ; newline to force eval by the repl
 
 (defn -main
   ([& args]
