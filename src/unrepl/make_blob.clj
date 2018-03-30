@@ -56,15 +56,20 @@
         regular s))
     (str sb)))
 
-(defn- gen-blob [session-actions options]
+(defn- gen-blob [session-actions required-libs options]
   (let [template (slurp (io/resource "unrepl/blob-template.clj"))
         code     (let [shaded-code-sb (StringBuilder.)
                        shaded-libs (shade/shade 'unrepl.repl
-                                                (merge options
-                                                       {:writer (fn [_ ^String code] (.append shaded-code-sb code))}))]
+                                                (into options
+                                                       {:writer (fn [_ ^String code] (.append shaded-code-sb code))}))
+                       shaded-libs
+                       (reduce (fn [shaded-libs required-lib]
+                                 (shade/shade-to-dir required-lib (:libs-dir options)
+                                   (assoc options
+                                     :provided [#"clojure\..*" shaded-libs])))
+                         shaded-libs required-libs)]
                    (-> template
-                     (str/replace "unrepl.repl"
-                                  (str (shaded-libs 'unrepl.repl)))
+                     (str/replace "unrepl.repl" (str (shaded-libs 'unrepl.repl)))
                      (str/replace "<BLOB-PAYLOAD>" (str shaded-code-sb))))]
     (str (strip-spaces-and-comments code) "\n" session-actions "\n"))) ; newline to force eval by the repl
 
@@ -74,7 +79,8 @@
                         options {:except ['unrepl.core]
                                  :provided [#"clojure\..*"]
                                  :session-actions "{}"
-                                 :target "resources/unrepl/blob.clj"}]
+                                 :target "resources/unrepl/blob.clj"
+                                 :libs-dir "resources/blob-libs"}]
                    (if args
                      (condp contains? (first args)
                        #{"--noshade"}       (recur (next args)  (assoc options :except [#".+"]))
@@ -97,5 +103,9 @@
          session-actions-map (edn/read-string {:default (fn [tag data] (tagged-literal 'unrepl-make-blob-unquote (list 'tagged-literal (tagged-literal 'unrepl-make-blob-quote tag) data)))} session-actions-source)]
      (-> options :target io/file .getAbsoluteFile .getParentFile .mkdirs)
      (if (map? session-actions-map)
-       (spit (:target options) (gen-blob (pr-str session-actions-map) options))
+       (let [required-libs (into #{}
+                             (keep (fn [[k v]]
+                                     (when (seq? v) (symbol? (first v)) (some-> (namespace (first v)) symbol))))
+                             session-actions-map)]
+         (spit (:target options) (gen-blob (pr-str session-actions-map) required-libs options)))
        (println "The arguments must be: a target file name and an EDN map.")))))

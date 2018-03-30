@@ -1,7 +1,8 @@
 (ns unrepl.shade-libs
   (:require [clojure.tools.namespace.parse :as nsp]
     [clojure.java.io :as io]
-    [clojure.string :as str]))
+    [clojure.string :as str]
+    [clojure.pprint :as pp]))
 
 (defn ns-reader [ns-name]
   (let [base (str/replace (name ns-name) #"[.-]" {"." "/" "-" "_"})]
@@ -44,6 +45,58 @@
 (defn hash64 [s]
   (-> s (.getBytes "UTF-8") sha1 java.io.ByteArrayInputStream. base64-encode))
 
+(defn- libspec? ; taken from clojure
+  "Returns true if x is a libspec"
+  [x]
+  (or (symbol? x)
+      (and (vector? x)
+           (or
+            (nil? (second x))
+            (keyword? (second x))))))
+
+(defn unfold-ns [ns-form]
+  (map
+    (fn [x]
+      (case (when (sequential? x) (first x))
+        (:require :use)
+        (let [[op & flags] (filter keyword? x)
+              libspecs-or-prefixlists (remove keyword? x)]
+          (concat
+            [op] 
+            (mapcat (fn [libspec-or-prefixlist]
+                      (if (libspec? libspec-or-prefixlist)
+                        [libspec-or-prefixlist]
+                        (let [[prefix & libspecs] libspec-or-prefixlist]
+                          (for [libspec libspecs]
+                            (if (symbol? libspec)
+                              (symbol (str prefix "." libspec))
+                              (assoc libspec 0 (symbol (str prefix "." (libspec 0)))))))))
+              libspecs-or-prefixlists)
+            flags))
+        :import (let [[op & classes-or-lists] x]
+                  (cons op
+                    (mapcat
+                      (fn [class-or-list]
+                        (if (symbol? class-or-list)
+                          [class-or-list]
+                          (let [[prefix & classes] class-or-list]
+                            (for [class classes]
+                              (symbol (str prefix "." class))))))
+                      classes-or-lists)))
+        x))
+    ns-form))
+
+(defn slurp-ns [ns-name]
+  (let [r (-> ns-name ns-reader clojure.lang.LineNumberingPushbackReader.)
+        w (java.io.StringWriter.)
+        ns-form (read r)]
+    (when-not (and (seq? ns-form) (= 'ns (first ns-form)))
+      (throw (ex-info (str "Unexpected first form for ns " ns-name)
+               {:ns ns-name :form ns-form})))
+    (binding [*out* w] (pp/pprint (unfold-ns ns-form)))
+    (io/copy r w)
+    (str w)))
+
 (defn exception
   [ns-name except]
   (cond
@@ -74,14 +127,19 @@
                 (instance? java.util.regex.Pattern except) (when (re-matches except (name ns-name)) ns-name)
                 (coll? except) (some #(rename ns-name %) except)
                 :else (throw (ex-info (str "Unexpected shading exception rule: " except) {:except except})))))
-          (provided? [ns-name] (rename ns-name provided))
+          (provided-alias [ns-name] (rename ns-name provided))
           (shade [shaded-nses ns-name]
-            (if (or (shaded-nses ns-name) (provided? ns-name))
+            (cond
+              (shaded-nses ns-name)
               shaded-nses
+              (provided-alias ns-name)
+              (assoc shaded-nses ns-name (provided-alias ns-name))
+              :else
               (let [shaded-nses (reduce shade shaded-nses (deps ns-name))
-                    pat (when-some [nses (seq (keys shaded-nses))]
-                          (re-pattern (str/join "|" (map #(java.util.regex.Pattern/quote (name %)) nses))))
-                    almost-shaded-code (cond-> (slurp (ns-reader ns-name))
+                    pat (when-some [nses (->> shaded-nses keys (map name) seq)]
+                          (re-pattern (str "(?:" (str/join "|" (map #(java.util.regex.Pattern/quote %) nses))
+                                        ")(?=[/\\s,\\\";@^`~()\\[\\]{}]|$)"))) ; / or terminating macro chars
+                    almost-shaded-code (cond-> (slurp-ns ns-name)
                                          pat (str/replace pat #(name (shaded-nses (symbol %)))))
                     h64 (hash64 almost-shaded-code)
                     shaded-ns-name (or (rename ns-name) (symbol (str ns-name "$" h64)))
@@ -91,15 +149,17 @@
    (shade {} ns-name)))
 
 (defn shade-to-dir
-  [ns-name dir & {:as options}]
-  (shade ns-name
-    (assoc options
-      :writer
-      (fn [ns-name code]
-        (let [filename (str (str/replace (name ns-name) #"[.-]" {"." "/" "-" "_"}) ".clj")
-              file (java.io.File. dir filename)]
-          (-> file .getParentFile .mkdirs)
-          (spit file code :encoding "UTF-8"))))))
+  ([ns-name dir] (shade-to-dir ns-name dir {}))
+  ([ns-name dir options]
+    (shade ns-name
+      (assoc options
+        :writer
+        (fn [ns-name code]
+          (let [filename (str (str/replace (name ns-name) #"[.-]" {"." "/" "-" "_"}) ".clj")
+                file (java.io.File. dir filename)]
+            (-> file .getParentFile .mkdirs)
+            (spit file code :encoding "UTF-8"))))))
+  ([ns-name dir optk optv & {:as options}] (shade-to-dir ns-name dir (assoc options optk optv))))
 
 (defn -main
   ([ns-name]
