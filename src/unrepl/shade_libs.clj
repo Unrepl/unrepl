@@ -97,15 +97,6 @@
     (io/copy r w)
     (str w)))
 
-(defn exception
-  [ns-name except]
-  (cond
-    (or (map? except) (set? except)) (except ns-name)
-    (symbol? except) (when (= except ns-name) ns-name)
-    (instance? java.util.regex.Pattern except) (when (re-matches except (name ns-name)) ns-name)
-    (coll? except) (some #(exception ns-name %) except)
-    :else (throw (ex-info (str "Unexpected shading exception rule: " except) {:except except}))))
-
 (defn make-pattern [nses]
   (->> nses (map name) (sort-by (comp - count))
     (map #(java.util.regex.Pattern/quote %))
