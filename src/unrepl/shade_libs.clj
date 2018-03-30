@@ -151,7 +151,7 @@
                     shaded-ns-name (or (rename ns-name) (symbol (str ns-name "$" h64)))
                     preserve-shaded-nses (assoc (zipmap (vals shaded-nses) (vals shaded-nses))
                                            ns-name shaded-ns-name) ; avoid rewriting already rewritten nses
-                    shaded-code (shade-code (slurp-ns ns-name) preserve-shaded-nses)]
+                    shaded-code (shade-code almost-shaded-code preserve-shaded-nses)]
                 (writer shaded-ns-name shaded-code)
                 (assoc shaded-nses ns-name shaded-ns-name))))]
    (shade {} ns-name)))
