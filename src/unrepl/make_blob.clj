@@ -69,9 +69,9 @@
                       (assoc options
                         :provided [#"clojure\..*" shaded-libs]))))
           shaded-libs required-libs)
-        code     (-> template
-                   (str/replace "unrepl.repl" (str (shaded-libs 'unrepl.repl)))
-                   (str/replace "<BLOB-PAYLOAD>" (str shaded-code-sb)))]
+        code (-> template
+               (str/replace "unrepl.repl" (str (shaded-libs 'unrepl.repl)))
+               (str/replace "<BLOB-PAYLOAD>" (str shaded-code-sb)))]
     (str (strip-spaces-and-comments code) "\n" (shade/shade-code session-actions shaded-libs) "\n"))) ; newline to force eval by the repl
 
 (defn -main

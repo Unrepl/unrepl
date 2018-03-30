@@ -1,4 +1,4 @@
-(ns unrepl.print
+(ns unrepl.printer
   (:require [clojure.string :as str]
             [clojure.edn :as edn]
             [clojure.main :as main]
