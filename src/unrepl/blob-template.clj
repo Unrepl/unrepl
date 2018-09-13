@@ -1,7 +1,7 @@
 (clojure.core/let [nop (clojure.core/constantly nil)
                    done (promise)
                    e (clojure.core/atom eval)]
-  (-> (create-ns 'sym)
+  (-> (create-ns 'unrepl.repl)
     (intern '-init-done)
     (alter-var-root
       (fn [v]
