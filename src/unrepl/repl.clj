@@ -56,11 +56,20 @@
 
 (defn atomic-write [^java.io.Writer w]
   (fn [x]
-    (let [s (blame :print (p/edn-str x))] ; was pr-str, must occur outside of the locking form to avoid deadlocks
-      (locking w
-        (.write w s)
-        (.write w "\n")
-        (.flush w)))))
+    (if (and (vector? x) (= (count x) 3))
+      (let [[tag payload id] x
+            s (blame :print (str "[" (p/edn-str tag)
+                              " " (p/edn-str payload)
+                              " " (p/edn-str id) "]"))] ; was pr-str, must occur outside of the locking form to avoid deadlocks
+        (locking w
+          (.write w s)
+          (.write w "\n")
+          (.flush w)))
+      (let [s (blame :print (p/edn-str x))] ; was pr-str, must occur outside of the locking form to avoid deadlocks
+        (locking w
+          (.write w s)
+          (.write w "\n")
+          (.flush w))))))
 
 (definterface ILocatedReader
   (setCoords [coords-map]))
