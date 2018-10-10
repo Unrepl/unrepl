@@ -101,7 +101,7 @@
                        (throw (ex-info (str "Unknown argument: " (first args)) {:arg (first args)})))
                      options))
          session-actions-source (if (re-find #"^\s*\{" (:session-actions options)) (:session-actions options) (slurp (:session-actions options)))
-         session-actions-map (edn/read-string {:default (fn [tag data] (tagged-literal 'unrepl-make-blob-unquote (list 'tagged-literal (tagged-literal 'unrepl-make-blob-quote tag) data)))} session-actions-source)]
+         session-actions-map (edn/read-string {:default tagged-literal} session-actions-source)]
      (-> options :target io/file .getAbsoluteFile .getParentFile .mkdirs)
      (if (map? session-actions-map)
        (let [required-libs (into #{}
