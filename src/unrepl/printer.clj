@@ -231,8 +231,13 @@
   (write (str "#" tag " "))
   (print-on write form rem-depth))
 
+(defn- sat-inc [n]
+  (if (= Long/MAX_VALUE n)
+    n
+    (unchecked-inc n)))
+
 (defn- print-trusted-tag-lit-on [write tag form rem-depth]
-  (print-tag-lit-on write tag form (inc rem-depth)))
+  (print-tag-lit-on write tag form (sat-inc rem-depth)))
 
 ;; --
 ;; Throwable->map backport from Clojure 1.9
@@ -372,7 +377,7 @@
       (print-trusted-tag-lit-on write "unrepl/object"
                                 [(class x) (format "0x%x" (System/identityHashCode x)) (object-representation x)
                                  {:bean {unreachable (tagged-literal 'unrepl/... (*elide* (ElidedKVs. (bean x))))}}]
-                                (inc rem-depth))))) ; is very trusted
+                                (sat-inc rem-depth))))) ; is very trusted
 
 (defn edn-str [x]
   (let [out (java.io.StringWriter.)
