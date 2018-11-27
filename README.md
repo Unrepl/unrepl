@@ -33,10 +33,10 @@ If you want to develop a client or just understand better what's happening under
 ```sh
 git clone https://github.com/Unrepl/unrepl.git
 cd unrepl
-# start a plain repl (non unrepl, non nrepl), so if you are in a lein project:
-java -cp `lein classpath` -Dclojure.server.repl="{:port 5555,:accept clojure.core.server/repl,:server-daemon false}" clojure.main -e nil &
+# start a plain repl (non unrepl, non nrepl), so using the clojure command line tools:
+clojure -J-Dclojure.server.repl="{:port 5555,:accept clojure.core.server/repl,:server-daemon false}" & 
 # generate the blob
-clj -m unrepl/make-blob
+clj -m unrepl.make-blob
 # connect, upgrade and enjoy!
 rlwrap cat resources/unrepl/blob.clj - | nc localhost 5555
 ```
