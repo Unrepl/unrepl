@@ -5,6 +5,9 @@
             [unrepl.core :as unrepl]))
 
 (def ^:dynamic *print-budget*)
+(def ^:dynamic *elide*
+  "Function of 1 argument which returns the elision."
+  (constantly nil))
 
 (def defaults {#'*print-length* 10
                #'*print-level* 8
@@ -124,10 +127,6 @@
                 (recur bits (bit-and 63 buf)))
               (recur bits buf))))))
     (.toByteArray bos)))
-
-(def ^:dynamic *elide*
-  "Function of 1 argument which returns the elision."
-  (constantly nil))
 
 (def ^:dynamic *max-colls* 100) ; TODO
 
