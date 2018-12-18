@@ -386,6 +386,7 @@
                 *in* in
                 *file* (-> in :coords :file)
                 *source-path* *file*
+                *default-data-reader-fn* tagged-literal
                 p/*elide* (partial (:put elision-store) session-id)
                 unrepl/*string-length* unrepl/*string-length*
                 unrepl/write (atomic-write raw-out)

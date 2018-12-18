@@ -4,7 +4,7 @@
 (def ^:once ^:private loaded-by "unrepl.repl")
 
 (def ^:once ^:dynamic *string-length* 80)
-(def ^:once ^:dynamic ^{:arglists '([x]) :doc "Atomically machine-prints its input to the output stream."} write)
+(def ^:once ^:dynamic ^{:arglists '([x]) :doc "Atomically machine-prints its input (a triple) to the output stream."} write)
 
 (defn ^:once non-eliding-write "use with care" [x]
   (binding [*print-length* Long/MAX_VALUE
