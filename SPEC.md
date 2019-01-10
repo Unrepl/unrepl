@@ -136,6 +136,7 @@ Clojure values are machine-printed to EDN.
  * Metadata is printed as `#unrepl/meta [{meta data} value]`.
  * Patterns (regexes) are printed as `#unrepl/pattern "[0-9]+"`.
  * Objects are printed as `#unrepl/object [class "id" representation]`. The representation is implementation dependent. One may use an elided map representation to allow browsing the object graph.
+ * Unreadable keywords and symbols are printed as `#unrepl/bad-keyword ["ns-or-nil" "name"]"` (resp. `unrepl/bad-symbol`).
 
 #### Ellipsis or elisions
 

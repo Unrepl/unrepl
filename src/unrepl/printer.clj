@@ -189,6 +189,12 @@
 
 (def atomic? (some-fn nil? true? false? char? string? symbol? keyword? #(and (number? %) (not (ratio? %)))))
 
+(defn- roundtrippable? [x]
+  (try
+    (= x (-> x pr-str read-string))
+    (catch Exception e
+      false)))
+
 (defn- as-str
   "Like pr-str but escapes all ASCII control chars."
   [x]
@@ -198,6 +204,9 @@
                              #(format "\\u%04x" (int (.charAt ^String % 0))))
     (char? x) (str/replace (pr-str x) #"\p{Cntrl}"
                            #(format "u%04x" (int (.charAt ^String % 0))))
+    (and (or (symbol? x) (keyword? x)) (not (roundtrippable? x)))
+    (str (if (keyword? x) "#unrepl/bad-keyword [" "#unrepl/bad-symbol [")
+         (as-str (namespace x)) " " (as-str (name x)) "]") ; as-str in case they are really really bad
     :else (pr-str x)))
 
 (defmacro ^:private latent-fn [& fn-body]
