@@ -34,8 +34,8 @@
       (not (identical? impl default)))))
 
 (def ^:private datafiable?
-  (if-some [Datafiable (some-> 'clojure.core.protocols/Datafiable resolve deref)]
-    #(or (get (meta %) 'clojure.core.protocols/datafy) (really-satisfies? Datafiable %))
+  (if-some [Datafiable (some-> 'clojure.core.protocols/Datafiable resolve)]
+    #(or (get (meta %) 'clojure.core.protocols/datafy) (really-satisfies? (deref Datafiable) %))
     (constantly false)))
 
 (def ^:private datafy
@@ -43,8 +43,8 @@
       (clojure.lang.Var$Unbound. #'datafy)))
 
 (def ^:private navigable?
-  (if-some [Navigable (some-> 'clojure.core.protocols/Navigable resolve deref)]
-    #(or (get (meta %) 'clojure.core.protocols/nav) (really-satisfies? Navigable %))
+  (if-some [Navigable (some-> 'clojure.core.protocols/Navigable resolve)]
+    #(or (get (meta %) 'clojure.core.protocols/nav) (really-satisfies? (deref Navigable) %))
     (constantly false)))
 
 (def ^:private nav
@@ -353,7 +353,7 @@
   clojure.lang.TaggedLiteral
   (-print-on [x write rem-depth]
     (case (:tag x)
-      unrepl/... (binding ; don't elide the elision 
+      unrepl/... (binding ; don't elide the elision
                   [*print-length* Long/MAX_VALUE
                    *print-level* Long/MAX_VALUE
                    *print-budget* Long/MAX_VALUE
