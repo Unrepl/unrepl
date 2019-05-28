@@ -360,13 +360,14 @@
                    unrepl/*string-length* Long/MAX_VALUE]
                    (write (str "#" (:tag x) " "))
                    (print-on write (:form x) Long/MAX_VALUE))
-      unrepl/browsable (let [[x thunk] (:form x)
+      unrepl/browsable (let [[v thunk] (:form x)
                              rem-depth (inc rem-depth)]
                          (set! *print-budget* (bump *print-budget* 2))
                          (write (str "#" (:tag x) " ["))
-                         (print-on write (:form x) rem-depth)
+                         (print-on write v rem-depth)
                          (write " ")
-                         (print-on write (tagged-literal 'unrepl/... (*elide* (lazy-seq [(thunk)]))) rem-depth))
+                         (print-on write (tagged-literal 'unrepl/... (*elide* (lazy-seq [(thunk)]))) rem-depth)
+                         (write "]"))
       (print-tag-lit-on write (:tag x) (:form x) rem-depth)))
 
   clojure.lang.Ratio
